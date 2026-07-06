@@ -12,7 +12,7 @@
  *      haven't started their own elections)
  *   5. Original leader steps down when it discovers the new term
  *
- * The LeaderTransferHandler wraps the raft-logic's transferLeadership
+ * The LeaderTransferHandler wraps the @maboke123/raft-core's transferLeadership
  * with additional safety checks and fallback mechanisms:
  *   - Pre-transfer no-op entry to ensure safety
  *   - TimeoutNow-based immediate election
@@ -73,7 +73,7 @@ export class LeaderTransferHandler {
   /**
    * Transfer leadership to a target node.
    *
-   * @param raftNode — The underlying raft-logic RaftNode instance
+   * @param raftNode — The underlying @maboke123/raft-core RaftNode instance
    * @param currentLeaderId — Current leader's node ID
    * @param targetNodeId — Target node ID to transfer to
    * @param proposeFn — Function to propose a no-op entry (pre-transfer safety)
@@ -120,7 +120,7 @@ export class LeaderTransferHandler {
         }
       }
 
-      // Step 2: Send TimeoutNow via raft-logic's transferLeadership
+      // Step 2: Send TimeoutNow via @maboke123/raft-core's transferLeadership
       if (raftNode && typeof raftNode.transferLeadership === 'function') {
         const targetId = Number(targetNodeId);
         await raftNode.transferLeadership(targetId, this.config.timeoutMs);
@@ -168,7 +168,7 @@ export class LeaderTransferHandler {
   }
 
   /**
-   * Send a TimeoutNow message to the target node via raft-logic step().
+   * Send a TimeoutNow message to the target node via @maboke123/raft-core step().
    * TimeoutNow = MsgType 13 in tikv/raft-rs.
    */
   private async sendTimeoutNow(raftNode: any, targetNodeId: string): Promise<void> {

@@ -1,7 +1,7 @@
 /**
  * SqliteStorage — Raft log persistence backed by better-sqlite3
  *
- * Implements the raft-logic Storage interface using SQLite for durable
+ * Implements the @maboke123/raft-core Storage interface using SQLite for durable
  * Raft log storage. Supports:
  *   - Raft log append/truncate with raft_log table
  *   - Metadata persistence via raft_kv table (hardState, snapshot info, etc.)
@@ -473,18 +473,18 @@ export class SqliteStorage {
   }
 
   // ──────────────────────────────────────────
-  //  raft-logic Storage interface
+  //  @maboke123/raft-core Storage interface
   // ──────────────────────────────────────────
 
   /**
    * Initialize the storage with a Raft node's initial state.
-   * Called by raft-logic after node creation.
+   * Called by @maboke123/raft-core after node creation.
    */
   async initialState(id: string): Promise<any> {
     if (!this.db) throw new Error('Database not open');
 
     // Read hard_state (persisted by persistReady), log entries, and snapshot
-    // to reconstruct the full initial state for raft-logic bootstrap.
+    // to reconstruct the full initial state for @maboke123/raft-core bootstrap.
     const hardStateBuf = this.getKv('hard_state');
     const metaBuf = this.getKv('snapshot_meta');
 
@@ -519,7 +519,7 @@ export class SqliteStorage {
       const minIdx = this.getMinIndex();
       result.lastIndex = lastIdx;
       result.entries = this.getLogEntries(minIdx, lastIdx + 1);
-      // raft-logic expects entries in the Ready format:
+      // @maboke123/raft-core expects entries in the Ready format:
       //   { index: string, term: string, type: number, data: Uint8Array|null }
       const toBase64 = (buf: Buffer | null | undefined): string | undefined =>
         buf ? Buffer.from(buf).toString('base64') : undefined;

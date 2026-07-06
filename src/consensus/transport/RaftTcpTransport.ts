@@ -1,5 +1,5 @@
 /**
- * RaftTcpTransport — TCP + mTLS transport layer for raft-logic
+ * RaftTcpTransport — TCP + mTLS transport layer for @maboke123/raft-core
  *
  * Implements the Raft transport interface used by RaftGroupManager:
  *   send(fromId: number, msgs: RaftMessage[]): Promise<void>
@@ -10,7 +10,7 @@
  *   - ConnectionPool (outgoing connections with mTLS + backoff)
  *   - MessageCodec (JSON frame serialization)
  *
- * Messages use wire format verified with raft-logic WASM:
+ * Messages use wire format verified with @maboke123/raft-core WASM:
  *   - entries[i].data = base64 string (not Uint8Array)
  *   - entries[i].entryType (not "type")
  *   - All u64 fields = strings (e.g. "1" not 1)
@@ -47,6 +47,8 @@ export interface RaftTcpTransportConfig {
     cert: Buffer | string;
     key: Buffer | string;
     ca: Buffer | string;
+    /** 证书身份验证选项。不传则使用向后兼容默认值（raft-node-{id} CN/SAN）。 */
+    verify?: import('./ConnectionPool').PeerTlsVerifyOptions;
   };
   /** 连接超时（ms，默认 5000） */
   connectTimeoutMs?: number;
@@ -316,7 +318,7 @@ export class RaftTcpTransport extends EventEmitter {
    * 这是 RaftGroupManager 调用的核心接口。
    *
    * @param fromId - 发送方节点 ID
-   * @param msgs - raft-logic step() 吐出的消息列表
+   * @param msgs - @maboke123/raft-core step() 吐出的消息列表
    */
   async send(fromId: number, msgs: RaftMessage[]): Promise<void> {
     if (this._stopped || !this.pool) return;
@@ -329,8 +331,8 @@ export class RaftTcpTransport extends EventEmitter {
       const targetId = parseInt(msg.to, 10);
       if (targetId === fromId) continue; // Skip self
 
-      // Map raft-logic node IDs to connection peer IDs
-      // Node IDs in raft-logic are the same as our peer IDs
+      // Map @maboke123/raft-core node IDs to connection peer IDs
+      // Node IDs in @maboke123/raft-core are the same as our peer IDs
       const peerId = targetId;
 
       if (!byPeer.has(peerId)) {
@@ -364,6 +366,15 @@ export class RaftTcpTransport extends EventEmitter {
         this._sendFrame(peerId, frame, isHeartbeat);
       }
     }
+  }
+
+  /**
+   * 直接发送消息到指定 peer，跳过 `msg.to` 路由。
+   * 用于 @maboke123/raft-core 的 BatchedRaftTransport 适配。
+   */
+  sendToPeer(peerId: number, payload: Buffer): void {
+    if (this._stopped || !this.pool) return;
+    this._sendFrame(peerId, payload, false);
   }
 
   /**
@@ -500,7 +511,7 @@ export class RaftTcpTransport extends EventEmitter {
       return;
     }
 
-    // Extract peer ID from certificate CN: "raft-node-{id}"
+    // Extract peer ID from certificate CN: default "raft-node-{id}", configurable via verifyOpts
     const cert = socket.getPeerCertificate();
     if (!cert?.subject?.CN) {
       socket.destroy();
@@ -508,13 +519,25 @@ export class RaftTcpTransport extends EventEmitter {
     }
 
     const cn = Array.isArray(cert.subject.CN) ? cert.subject.CN[0] : cert.subject.CN;
-    const cnMatch = cn?.match(/^raft-node-(\d+)$/);
-    if (!cnMatch) {
+    const verifyOpts = this.config.tls.verify || {};
+    const cnPrefixes = verifyOpts.allowedCNPrefixes?.length
+      ? verifyOpts.allowedCNPrefixes
+      : [`raft-node-`];
+
+    let peerId: number | null = null;
+    for (const prefix of cnPrefixes) {
+      const escapedPrefix = prefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const cnMatch = cn?.match(new RegExp(`^${escapedPrefix}(\\d+)$`));
+      if (cnMatch) {
+        peerId = parseInt(cnMatch[1], 10);
+        break;
+      }
+    }
+
+    if (peerId === null) {
       socket.destroy();
       return;
     }
-
-    const peerId = parseInt(cnMatch[1], 10);
 
     // Register this incoming connection with the connection pool
     if (this.pool) {
@@ -587,7 +610,7 @@ export class RaftTcpTransport extends EventEmitter {
         if (!msg.from || msg.from === '0') {
           msg.from = String(peerId);
         }
-        this.emit('message', msg);
+        this.emit('message', msg, String(peerId));
       } catch (err) {
         this.emit('decode-error', { peerId, error: err });
       }

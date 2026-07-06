@@ -16,7 +16,7 @@
  *   - Each chunk is streamed, assembled, checksum-verified, and applied
  *
  * Wire protocol:
- *   - Chunks are sent via raft-logic step() with MsgInstallSnapshot (type 14)
+ *   - Chunks are sent via @maboke123/raft-core step() with MsgInstallSnapshot (type 14)
  *   - The handler manages reassembly at the receiving end
  *   - Full snapshot is installed after the last chunk is received
  */

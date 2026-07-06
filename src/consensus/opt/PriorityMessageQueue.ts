@@ -20,7 +20,7 @@ import pino from 'pino';
 const logger = pino({ level: process.env.LOG_LEVEL || 'info' });
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  Raft MsgType constants (from raft-logic)
+//  Raft MsgType constants (from @maboke123/raft-core)
 // ─────────────────────────────────────────────────────────────────────────────
 
 export const RAFT_MSG_TYPE = {

@@ -64,7 +64,7 @@ export class MsgPackCodec {
   }
 
   /**
-   * Convert from JSON-style RaftMessage (raft-logic format) to MsgPack format.
+   * Convert from JSON-style RaftMessage (@maboke123/raft-core format) to MsgPack format.
    */
   static fromRaftMessage(jsonMsg: any): MsgPackRaftMessage {
     return {
@@ -84,7 +84,7 @@ export class MsgPackCodec {
   }
 
   /**
-   * Convert from MsgPack format back to JSON-style RaftMessage (raft-logic format).
+   * Convert from MsgPack format back to JSON-style RaftMessage (@maboke123/raft-core format).
    */
   static toRaftMessage(mpMsg: MsgPackRaftMessage): any {
     return {

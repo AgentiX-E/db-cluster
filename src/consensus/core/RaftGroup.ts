@@ -694,10 +694,9 @@ export class RaftGroup {
   /**
    * Transfer leadership to a target node.
    *
-   * This uses the raft-logic RaftNode's transferLeadership internally,
-   * which sends a MsgTransferLeader (msgType 13) to trigger leadership
-   * transfer. The target receives a TimeoutNow message which triggers
-   * an immediate election (no election timeout wait).
+   * Tries direct transferLeadership if the underlying RaftNode supports it
+   * (direct @maboke123/raft-core RaftNode call). Falls back to transferLeadershipViaCampaign
+   * for @maboke123/raft-core which does not expose transferLeadership directly.
    */
   async transferLeadership(targetNodeId: string): Promise<LeaderTransferResult> {
     if (this.leaderTransferInProgress) {
@@ -718,17 +717,18 @@ export class RaftGroup {
       };
     }
 
+    // Check if the underlying RaftNode supports transferLeadership
+    const raftNode = (this.raft as any).node;
+    if (!raftNode || typeof raftNode.transferLeadership !== 'function') {
+      // Not available — use campaign-based fallback
+      return this.transferLeadershipViaCampaign(targetNodeId);
+    }
+
     const startTime = Date.now();
     this.leaderTransferInProgress = true;
 
     try {
-      // Get the underlying raft-logic RaftNode to use its transferLeadership
-      const raftNode = (this.raft as any).node;
-      if (!raftNode || typeof raftNode.transferLeadership !== 'function') {
-        throw new Error('Underlying RaftNode does not support transferLeadership');
-      }
-
-      const targetId = Number(targetNodeId); // raft-logic uses number IDs internally
+      const targetId = Number(targetNodeId); // RaftNode uses number IDs internally
       await raftNode.transferLeadership(targetId, 10_000);
 
       const durationMs = Date.now() - startTime;
@@ -1228,31 +1228,17 @@ export class RaftGroup {
   // ──────────────────────────────────────────
 
   /**
-   * Serialized step queue: raft-logic WASM is NOT thread-safe.
-   * Two concurrent step() calls will panic inside the Rust WASM
-   * (RefCell already borrowed). We must serialize ALL step() calls.
+   * Handle incoming Raft messages.
+   *
+   * Under @maboke123/raft-core, Transport automatically routes messages,
+   * so most messages are handled directly by the RaftNode internals and
+   * do not need manual forwarding. Only MsgInstallSnapshot (type 14)
+   * requires interception for chunk reassembly via InstallSnapshotHandler.
    */
-  private _stepQueue: Array<() => Promise<void>> = [];
-  private _stepping = false;
-
-  private async _processStepQueue(): Promise<void> {
-    if (this._stepping || this._stepQueue.length === 0) return;
-    this._stepping = true;
-    while (this._stepQueue.length > 0) {
-      const task = this._stepQueue.shift()!;
-      try {
-        await task();
-      } catch {
-        // Individual step errors are non-fatal
-      }
-    }
-    this._stepping = false;
-  }
-
   handleRaftMessage(msg: any): void {
     // ── G17: Intercept MsgInstallSnapshot (type 14) ──
     // Route incoming InstallSnapshot chunks to the handler for reassembly
-    // instead of forwarding raw messages to raft-logic. The handler
+    // instead of forwarding to the RaftNode. The handler
     // assembles chunks, verifies checksums, persists the snapshot,
     // and calls back when the full snapshot is ready.
     if (
@@ -1261,29 +1247,15 @@ export class RaftGroup {
       msg.snapshot &&
       this.installSnapshotHandler
     ) {
-      this._stepQueue.push(async () => {
-        try {
-          await this._handleInstallSnapshot(msg);
-        } catch (err: any) {
-          logger.error(
-            `[RaftGroup] InstallSnapshot error (shard ${this.shardId}): ${err.message}`,
-          );
-        }
+      this._handleInstallSnapshot(msg).catch((err: any) => {
+        logger.error(
+          `[RaftGroup] InstallSnapshot error (shard ${this.shardId}): ${err.message}`,
+        );
       });
-      this._processStepQueue().catch(() => {/* suppressed */});
       return;
     }
 
-    this._stepQueue.push(async () => {
-      try {
-        await this.raft.step(msg);
-      } catch {
-        // Suppress transient raft-logic errors (e.g., unknown peer during
-        // startup or transition). These are non-fatal and expected during
-        // topology changes.
-      }
-    });
-    this._processStepQueue().catch(() => {/* suppressed */});
+    // Other messages are handled via Transport auto-routing — no-op here.
   }
 
   /**
@@ -1291,7 +1263,7 @@ export class RaftGroup {
    *
    * Routes the chunk to InstallSnapshotHandler for assembly. When the final
    * chunk arrives, the handler assembles, checksums, and persists the snapshot,
-   * then calls the callback which forwards a response back through raft-logic.
+   * then calls the callback which forwards a response back through the RaftNode.
    */
   private async _handleInstallSnapshot(msg: any): Promise<void> {
     const req: InstallSnapshotRequest = msg.snapshot;
@@ -1311,7 +1283,7 @@ export class RaftGroup {
           `(term ${meta.lastIncludedTerm}, ${snapshotData.length} bytes)`,
         );
 
-        // Forward the assembled snapshot to raft-logic so it can
+        // Forward the assembled snapshot to the RaftNode so it can
         // update its log compaction state (last applied, committed, etc.)
         await this.raft.step({
           msgType: 14,

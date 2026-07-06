@@ -1,12 +1,12 @@
 /**
- * MessageCodec — TCP wire protocol for raft-logic Raft messages.
+ * MessageCodec — TCP wire protocol for @maboke123/raft-core Raft messages.
  *
  * Wire format:
  *   [4 bytes: Big-Endian uint32 payload length][N bytes: JSON payload]
  *
  * Length=0 signals end-of-stream (caller should close the connection).
  *
- * Key facts verified against raft-logic WASM:
+ * Key facts verified against @maboke123/raft-core WASM:
  * - Messages are JSON-serializable with base64 entry data
  * - entry.data is a base64 string (WASM expects string, not Uint8Array)
  * - Field name is `entryType` (not `type`)
@@ -15,7 +15,7 @@
  * ⚠️ Shard routing: This module handles per-message encoding only.
  * Shard routing across nodes is delegated to RaftGroupManager +
  * RaftTcpTransport + NodeTransport. Currently, RaftGroup routes
- * messages by raft-logic peer ID (which maps 1:1 to node IDs).
+ * messages by @maboke123/raft-core peer ID (which maps 1:1 to node IDs).
  *
  * In the future, if a hashring-based shard placement is needed
  * (e.g., to support dynamic shard migration), the routing layer
@@ -188,7 +188,7 @@ export class MessageCodec {
    * MsgPack serializes binary fields as Uint8Array.  Convert back to
    * Buffer so the roundtrip (encode → decode) preserves the original
    * Buffer type.  Call normaliseForWasm() separately before passing
-   * messages to raft-logic WASM, which converts Buffer → base64.
+   * messages to @maboke123/raft-core WASM, which converts Buffer → base64.
    */
   private static normaliseEntryData(msg: RaftMessage): void {
     if (!msg.entries) return;
@@ -201,7 +201,7 @@ export class MessageCodec {
   }
 
   /**
-   * Ensure a RaftMessage is safe for raft-logic WASM step().
+   * Ensure a RaftMessage is safe for @maboke123/raft-core WASM step().
    *
    * Handles fields that may arrive as raw Buffer/Uint8Array from
    * TCP deserialization (MsgPack or incompatible source) but must

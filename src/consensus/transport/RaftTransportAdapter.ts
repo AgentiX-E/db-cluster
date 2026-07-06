@@ -1,18 +1,18 @@
 /**
- * RaftTransportAdapter — bridges raft-logic transport interface to RaftTcpTransport
+ * RaftTransportAdapter — bridges @maboke123/raft-core transport interface to RaftTcpTransport
  *                       (or any object with a compatible send() method)
  *
- * raft-logic calls transport.send(fromId, msgs) with messages in WASM internal format.
+ * @maboke123/raft-core calls transport.send(fromId, msgs) with messages in WASM internal format.
  * Our TCP wire format requires:
  *   - entry.data: Uint8Array → base64 string
- *   - u64 fields: already strings (raft-logic transport comment says so)
+ *   - u64 fields: already strings (@maboke123/raft-core transport comment says so)
  *
  * This adapter converts messages for the wire and passes them to the underlying transport.
  *
- * The other direction (wire → raft-logic) is handled by RaftGroupManager:
+ * The other direction (wire → @maboke123/raft-core) is handled by RaftGroupManager:
  *   - Receive message from RaftTcpTransport.on('message')
  *   - Call RaftAdapter.step() with the message (has base64 strings)
- *   - raft-logic WASM accepts base64 strings for entry data
+ *   - @maboke123/raft-core WASM accepts base64 strings for entry data
  *
  * Extensions:
  *   GAP-2 (Pipeline Replication): Supports parallel/out-of-order log entry
@@ -243,7 +243,7 @@ export class RaftTransportAdapter {
   // ── Original send logic ──────────────────────────────────
 
   /**
-   * Called by raft-logic RaftNode when it has messages to send.
+   * Called by @maboke123/raft-core RaftNode when it has messages to send.
    * Converts WASM-internal format (Uint8Array data) to wire format
    * (base64 string data) before forwarding to RaftTcpTransport.
    *
@@ -251,7 +251,7 @@ export class RaftTransportAdapter {
    * backpressure when the window is full.
    */
   async send(fromId: string | number, msgs: any[]): Promise<void> {
-    // raft-logic may call with string or number fromId
+    // @maboke123/raft-core may call with string or number fromId
     const numericFromId = Number(fromId);
 
     for (const msg of msgs) {
@@ -295,7 +295,7 @@ export class RaftTransportAdapter {
 
     // ── Self-message routing ──
     // Self-addressed messages (from === to), such as MsgPreVoteResp (type=18)
-    // during pre-vote elections, must be re-fed into raft-logic via the WASM
+    // during pre-vote elections, must be re-fed into @maboke123/raft-core via the WASM
     // serialization queue — NOT sent through TCP (RaftTcpTransport drops them).
     // The selfStep callback (set by RaftAdapter.init()) routes them directly
     // into the WASM queue.
@@ -316,7 +316,7 @@ export class RaftTransportAdapter {
   }
 
   /**
-   * Called by raft-logic RaftNode.start() to register itself.
+   * Called by @maboke123/raft-core RaftNode.start() to register itself.
    * We don't need to do anything here since RaftTcpTransport manages peers.
    */
   register(node: { id: string | number }): void {

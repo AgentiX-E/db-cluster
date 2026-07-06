@@ -51,6 +51,20 @@ export interface PeerInfo {
   port: number;
 }
 
+export interface PeerTlsVerifyOptions {
+  /** CN 前缀白名单。验证证书 CN 是否以其中任一开头。
+   *  默认: ["raft-node-"]，会校验 CN === "raft-node-{peerId}"。
+   *  设为 ["*"] 或空数组可跳过 CN 检查。 */
+  allowedCNPrefixes?: string[];
+  /** SAN DNS 条目前缀白名单。验证证书 SAN 中是否有 DNS: 条目以此开头。
+   *  默认: ["raft-node-"]，要求 SAN 包含 "DNS:raft-node-{peerId}"。 */
+  allowedSANPrefixes?: string[];
+  /** 是否跳过 ext_key_usage 检查。设为 true 则接受不带 extKeyUsage 的证书。
+   *  Node.js v24+ 把 extKeyUsage OID 映射为 OID 字符串而非友好名，
+   *  默认 false 时会同时匹配友好名和 OID 字符串。 */
+  skipExtKeyUsageCheck?: boolean;
+}
+
 export interface ConnectionPoolConfig {
   nodeId: number;
   peers: Array<PeerInfo>;
@@ -58,6 +72,8 @@ export interface ConnectionPoolConfig {
     cert: Buffer | string;
     key: Buffer | string;
     ca: Buffer | string;
+    /** 证书身份验证选项（可选）。不传则使用向后兼容的默认行为。 */
+    verify?: PeerTlsVerifyOptions;
   };
   connectTimeoutMs?: number;
   initialRetryMs?: number;
@@ -346,16 +362,19 @@ function computeBackoff(
 //  Certificate validation
 // ──────────────────────────────────────────
 
-function validatePeerCert(socket: tls.TLSSocket, expectedPeerId: number): boolean {
+function validatePeerCert(socket: tls.TLSSocket, expectedPeerId: number, verifyOpts?: PeerTlsVerifyOptions): boolean {
   const cert = socket.getPeerCertificate();
   if (!cert || !cert.subject) return false;
 
-  // Expected CN: raft-node-{peerId}
-  const expectedCN = `raft-node-${expectedPeerId}`;
-  const cn = cert.subject.CN;
+  const cnPrefixes = verifyOpts?.allowedCNPrefixes?.length
+    ? verifyOpts.allowedCNPrefixes
+    : [`raft-node-`];
+  const cnStrict = !cnPrefixes.includes('*');
 
-  if (cn !== expectedCN) {
-    return false;
+  if (cnStrict) {
+    const cn = cert.subject.CN || '';
+    const cnMatch = cnPrefixes.some((prefix: string) => cn === `${prefix}${expectedPeerId}`);
+    if (!cnMatch) return false;
   }
 
   // Verify certificate is not expired
@@ -364,23 +383,35 @@ function validatePeerCert(socket: tls.TLSSocket, expectedPeerId: number): boolea
   if (cert.valid_to && new Date(cert.valid_to) < now) return false;
 
   // Check Subject Alternative Name (SAN) if present
-  // SAN entries take precedence over CN per RFC 6125
-  const sans = cert.subjectaltname;
-  if (sans) {
-    const expectedSAN = `DNS:raft-node-${expectedPeerId}`;
-    const sanEntries = sans.split(/,\s*/);
-    if (!sanEntries.some((entry: string) => entry.trim() === expectedSAN)) {
-      return false;
+  const sanPrefixes = verifyOpts?.allowedSANPrefixes?.length
+    ? verifyOpts.allowedSANPrefixes
+    : [`raft-node-`];
+  const sanStrict = !sanPrefixes.includes('*');
+  if (sanStrict) {
+    const sans = cert.subjectaltname;
+    if (sans) {
+      const sanEntries = sans.split(/,\s*/);
+      const sanMatch = sanEntries.some((entry: string) => {
+        const trimmed = entry.trim();
+        if (!trimmed.startsWith('DNS:')) return false;
+        const dnsName = trimmed.slice(4);
+        return sanPrefixes.some((prefix: string) => dnsName === `${prefix}${expectedPeerId}`);
+      });
+      if (!sanMatch) return false;
     }
   }
 
-  // Check key usage — ensure the certificate permits server/client authentication
-  if (cert.ext_key_usage) {
-    const hasServerAuth = cert.ext_key_usage.includes('serverAuth');
-    const hasClientAuth = cert.ext_key_usage.includes('clientAuth');
-    if (!hasServerAuth && !hasClientAuth) {
-      return false;
-    }
+  // Check key usage / extended key usage
+  if (cert.ext_key_usage && !verifyOpts?.skipExtKeyUsageCheck) {
+    const OID_SERVER_AUTH = '1.3.6.1.5.5.7.3.1';
+    const OID_CLIENT_AUTH = '1.3.6.1.5.5.7.3.2';
+    const hasServerAuth = cert.ext_key_usage.some(
+      (ku: string) => ku === 'serverAuth' || ku === OID_SERVER_AUTH,
+    );
+    const hasClientAuth = cert.ext_key_usage.some(
+      (ku: string) => ku === 'clientAuth' || ku === OID_CLIENT_AUTH,
+    );
+    if (!hasServerAuth && !hasClientAuth) return false;
   }
 
   return true;
@@ -613,7 +644,7 @@ export class ConnectionPool {
     if (this._stopped) return null;
 
     // Validate peer certificate
-    if (!validatePeerCert(socket, peerId)) {
+    if (!validatePeerCert(socket, peerId, this.config.tls.verify)) {
       socket.destroy();
       return null;
     }
@@ -816,7 +847,7 @@ export class ConnectionPool {
       }
 
       // Validate peer certificate
-      if (!validatePeerCert(socket, peerId)) {
+      if (!validatePeerCert(socket, peerId, this.config.tls.verify)) {
         socket.destroy();
         this._connecting.delete(peerId);
         throw new Error(`Peer certificate validation failed for peer ${peerId}: CN mismatch or expired`);
@@ -937,40 +968,74 @@ export class ConnectionPool {
           ciphers: 'TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POLY1305_SHA256:ECDHE-RSA-AES256-GCM-SHA384',
           ecdhCurve: 'prime256v1:secp384r1',
           checkServerIdentity: (hostname: string, cert: tls.PeerCertificate) => {
-            // Custom server identity verification: validate hostname, CN, SAN, and key usage
-            const expectedCN = `raft-node-${peer.id}`;
+            // 从配置读取验证选项，不传则用向后兼容默认值
+            const verifyOpts = this.config.tls.verify || {};
 
-            // 1. Validate CN matches expected peer ID
-            const cn = cert.subject?.CN;
-            if (cn !== expectedCN) {
-              return new Error(`Certificate CN "${cn}" does not match expected "raft-node-${peer.id}"`);
-            }
-
-            // 2. Check SAN (Subject Alternative Name) — RFC 6125
-            const expectedSAN = `DNS:raft-node-${peer.id}`;
-            const sans = cert.subjectaltname;
-            if (sans) {
-              const sanEntries = sans.split(/,\s*/);
-              const sanMatch = sanEntries.some((entry: string) => entry.trim() === expectedSAN);
-              if (!sanMatch) {
+            // ── 1. CN 匹配 ──────────────────────────────────────
+            // 默认行为：CN === "raft-node-{peer.id}"
+            const cnPrefixes = verifyOpts.allowedCNPrefixes?.length
+              ? verifyOpts.allowedCNPrefixes
+              : [`raft-node-`];
+            const cnStrict = !cnPrefixes.includes('*');
+            if (cnStrict) {
+              const cn = cert.subject?.CN || '';
+              // 当使用前缀列表时，检查 CN 以任一前缀开头
+              const cnMatch = cnPrefixes.some((prefix: string) => cn === `${prefix}${peer.id}`);
+              if (!cnMatch) {
                 return new Error(
-                  `Certificate SAN entries [${sans}] do not contain expected "DNS:raft-node-${peer.id}"`,
+                  `Certificate CN "${cn}" does not match any expected CN ` +
+                  `(prefixes: ${JSON.stringify(cnPrefixes)}, peer.id: ${peer.id})`,
                 );
               }
             }
 
-            // 3. Check key usage / extended key usage for server authentication
-            if (cert.ext_key_usage) {
-              const hasServerAuth = cert.ext_key_usage.includes('serverAuth');
-              const hasClientAuth = cert.ext_key_usage.includes('clientAuth');
+            // ── 2. SAN 匹配 ──────────────────────────────────────
+            // 默认行为：SAN 包含 "DNS:raft-node-{peer.id}"
+            const sanPrefixes = verifyOpts.allowedSANPrefixes?.length
+              ? verifyOpts.allowedSANPrefixes
+              : [`raft-node-`];
+            const sanStrict = !sanPrefixes.includes('*');
+            if (sanStrict) {
+              const sans = cert.subjectaltname;
+              if (sans) {
+                const sanEntries = sans.split(/,\s*/);
+                const sanMatch = sanEntries.some((entry: string) => {
+                  const trimmed = entry.trim();
+                  // 只检查 DNS: 条目
+                  if (!trimmed.startsWith('DNS:')) return false;
+                  const dnsName = trimmed.slice(4); // 去掉 "DNS:" 前缀
+                  // 默认行为：dnsName === "raft-node-{peer.id}"
+                  return sanPrefixes.some((prefix: string) => dnsName === `${prefix}${peer.id}`);
+                });
+                if (!sanMatch) {
+                  return new Error(
+                    `Certificate SAN entries [${sans}] do not contain expected ` +
+                    `"DNS:{prefix}{peer.id}" (prefixes: ${JSON.stringify(sanPrefixes)}, peer.id: ${peer.id})`,
+                  );
+                }
+              }
+            }
+
+            // ── 3. ext_key_usage 检查 ──────────────────────────
+            if (cert.ext_key_usage && !verifyOpts.skipExtKeyUsageCheck) {
+              // 兼容友好名（旧 Node 版本）和 OID 字符串（Node v24+）
+              const OID_SERVER_AUTH = '1.3.6.1.5.5.7.3.1';
+              const OID_CLIENT_AUTH = '1.3.6.1.5.5.7.3.2';
+              const hasServerAuth = cert.ext_key_usage.some(
+                (ku: string) => ku === 'serverAuth' || ku === OID_SERVER_AUTH,
+              );
+              const hasClientAuth = cert.ext_key_usage.some(
+                (ku: string) => ku === 'clientAuth' || ku === OID_CLIENT_AUTH,
+              );
               if (!hasServerAuth && !hasClientAuth) {
                 return new Error(
-                  `Certificate extended key usage [${cert.ext_key_usage}] lacks serverAuth/clientAuth`,
+                  `Certificate extended key usage [${cert.ext_key_usage}] lacks ` +
+                  `serverAuth (${OID_SERVER_AUTH}) / clientAuth (${OID_CLIENT_AUTH})`,
                 );
               }
             }
 
-            // 4. Validate hostname if set — the connection host should match
+            // ── 4. Hostname ──────────────────────────────────────
             if (hostname && hostname !== peer.host && !hostname.endsWith(peer.host)) {
               return new Error(
                 `Certificate hostname "${hostname}" does not match peer host "${peer.host}"`,
