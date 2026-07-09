@@ -29,7 +29,6 @@ import crc32 from 'buffer-crc32';
 import pino from 'pino';
 const logger = pino({ level: process.env.LOG_LEVEL || 'info' });
 
-
 // ──────────────────────────────────────────
 //  Types
 // ──────────────────────────────────────────
@@ -154,7 +153,7 @@ export class SqliteStorage {
       walAutocheckpoint: opts.walAutocheckpoint ?? 1000,
       busyTimeout: opts.busyTimeout ?? 5000,
       foreignKeys: opts.foreignKeys ?? false,
-      onOpen: opts.onOpen ?? null as any,
+      onOpen: opts.onOpen ?? (null as any),
       maxLogSize: opts.maxLogSize ?? 10000,
     };
   }
@@ -386,18 +385,16 @@ export class SqliteStorage {
     try {
       // Run integrity check
       const integrityResult = this.db.pragma('integrity_check') as Array<{ integrity_check: string }>;
-      const integrityOk = integrityResult.every(r => r.integrity_check === 'ok');
+      const integrityOk = integrityResult.every((r) => r.integrity_check === 'ok');
 
       if (!integrityOk) {
-        const failures = integrityResult
-          .filter(r => r.integrity_check !== 'ok')
-          .map(r => r.integrity_check);
+        const failures = integrityResult.filter((r) => r.integrity_check !== 'ok').map((r) => r.integrity_check);
         logger.error({ failures }, '[SqliteStorage] Integrity check failed');
 
         // Attempt WAL checkpoint to recover
         this.db.pragma('wal_checkpoint(TRUNCATE)');
         const retryResult = this.db.pragma('integrity_check') as Array<{ integrity_check: string }>;
-        const retryOk = retryResult.every(r => r.integrity_check === 'ok');
+        const retryOk = retryResult.every((r) => r.integrity_check === 'ok');
 
         if (!retryOk) {
           return { ok: false, message: `Integrity check failed after recovery: ${failures.join(', ')}` };
@@ -436,7 +433,7 @@ export class SqliteStorage {
     if (!this.db) throw new Error('Database not open');
 
     const minIndex = (this.stmtMinLogIndex!.get() as any)?.minIndex ?? 0;
-    const countRow = (this.stmtCountLogs!.get() as any);
+    const countRow = this.stmtCountLogs!.get() as any;
     const entryCount = countRow?.count ?? 0;
     const lastRow = this.stmtLastLog!.get() as any;
     const lastIndex = lastRow?.lastIndex ?? 0;
@@ -563,11 +560,12 @@ export class SqliteStorage {
           const index = Number(entry.index);
           const term = Number(entry.term);
           const type = Number(entry.type || 0);
-          const data = entry.data instanceof Uint8Array
-            ? Buffer.from(entry.data)
-            : entry.data
-              ? Buffer.from(String(entry.data))
-              : null;
+          const data =
+            entry.data instanceof Uint8Array
+              ? Buffer.from(entry.data)
+              : entry.data
+                ? Buffer.from(String(entry.data))
+                : null;
 
           this.appendLogEntry(index, term, type, data);
         }
@@ -635,7 +633,7 @@ export class SqliteStorage {
   getLogEntries(lo: number, hi: number): RaftLogEntry[] {
     if (!this.db) throw new Error('Database not open');
     const rows = this.stmtGetLogRange!.all(lo, hi) as any[];
-    return rows.map(r => ({
+    return rows.map((r) => ({
       index: r.entry_index,
       term: r.term,
       type: r.type,
@@ -807,9 +805,7 @@ export class SqliteStorage {
     await this.truncateLogsBefore(snapshotIndex);
     const after = this.countLogs();
 
-    logger.info(
-      `[SqliteStorage] Compacted logs at index ${snapshotIndex}: ${before} → ${after} entries`,
-    );
+    logger.info(`[SqliteStorage] Compacted logs at index ${snapshotIndex}: ${before} → ${after} entries`);
 
     return after;
   }
@@ -869,39 +865,19 @@ export class SqliteStorage {
     this.stmtGetLogRange = this.db.prepare(
       'SELECT entry_index, term, type, data, checksum FROM raft_log WHERE entry_index >= ? AND entry_index < ? ORDER BY entry_index ASC',
     );
-    this.stmtDeleteLogsBefore = this.db.prepare(
-      'DELETE FROM raft_log WHERE entry_index <= ?',
-    );
-    this.stmtDeleteLogsFrom = this.db.prepare(
-      'DELETE FROM raft_log WHERE entry_index >= ?',
-    );
+    this.stmtDeleteLogsBefore = this.db.prepare('DELETE FROM raft_log WHERE entry_index <= ?');
+    this.stmtDeleteLogsFrom = this.db.prepare('DELETE FROM raft_log WHERE entry_index >= ?');
     this.stmtLastLog = this.db.prepare(
       'SELECT entry_index AS lastIndex FROM raft_log ORDER BY entry_index DESC LIMIT 1',
     );
-    this.stmtLastTerm = this.db.prepare(
-      'SELECT term FROM raft_log ORDER BY entry_index DESC LIMIT 1',
-    );
-    this.stmtMinLogIndex = this.db.prepare(
-      'SELECT MIN(entry_index) AS minIndex FROM raft_log',
-    );
-    this.stmtCountLogs = this.db.prepare(
-      'SELECT COUNT(*) AS count FROM raft_log',
-    );
-    this.stmtTruncateLogs = this.db.prepare(
-      'DELETE FROM raft_log',
-    );
+    this.stmtLastTerm = this.db.prepare('SELECT term FROM raft_log ORDER BY entry_index DESC LIMIT 1');
+    this.stmtMinLogIndex = this.db.prepare('SELECT MIN(entry_index) AS minIndex FROM raft_log');
+    this.stmtCountLogs = this.db.prepare('SELECT COUNT(*) AS count FROM raft_log');
+    this.stmtTruncateLogs = this.db.prepare('DELETE FROM raft_log');
 
-    this.stmtGetKv = this.db.prepare(
-      'SELECT value FROM raft_kv WHERE key = ?',
-    );
-    this.stmtSetKv = this.db.prepare(
-      'INSERT OR REPLACE INTO raft_kv (key, value) VALUES (?, ?)',
-    );
-    this.stmtDeleteKv = this.db.prepare(
-      'DELETE FROM raft_kv WHERE key = ?',
-    );
-    this.stmtScanKv = this.db.prepare(
-      'SELECT key, value FROM raft_kv WHERE key LIKE ? ORDER BY key',
-    );
+    this.stmtGetKv = this.db.prepare('SELECT value FROM raft_kv WHERE key = ?');
+    this.stmtSetKv = this.db.prepare('INSERT OR REPLACE INTO raft_kv (key, value) VALUES (?, ?)');
+    this.stmtDeleteKv = this.db.prepare('DELETE FROM raft_kv WHERE key = ?');
+    this.stmtScanKv = this.db.prepare('SELECT key, value FROM raft_kv WHERE key LIKE ? ORDER BY key');
   }
 }

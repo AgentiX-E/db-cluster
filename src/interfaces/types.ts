@@ -82,7 +82,9 @@ export interface SharedTransport {
   send(fromId: string | number, msgs: unknown[]): Promise<void>;
   register?(node: { id: number; host: string; port: number }): void;
   /** Per-shard transport wrapper (NodeTransport). */
-  forShard?(shardId: number | string): { send(fromId: string | number, msgs: unknown[]): Promise<void> } | SharedTransport;
+  forShard?(
+    shardId: number | string,
+  ): { send(fromId: string | number, msgs: unknown[]): Promise<void> } | SharedTransport;
 }
 
 export class SqlVecError extends Error {
@@ -199,7 +201,10 @@ export interface FlexibleQuorumConfig {
   unhealthyCount: number;
 }
 
-export function resolveFlexibleQuorumConfig(config?: Partial<FlexibleQuorumConfig>, total?: number): FlexibleQuorumConfig {
+export function resolveFlexibleQuorumConfig(
+  config?: Partial<FlexibleQuorumConfig>,
+  total?: number,
+): FlexibleQuorumConfig {
   const n = total ?? 3;
   const majority = Math.floor(n / 2) + 1;
   return {

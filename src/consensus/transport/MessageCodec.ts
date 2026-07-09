@@ -40,9 +40,9 @@ const FORMAT_MSGPACK = 0x01;
 
 export interface RaftMessage {
   msgType: number;
-  from: string;      // u64 as string
-  to: string;        // u64 as string
-  term: string;      // u64 as string
+  from: string; // u64 as string
+  to: string; // u64 as string
+  term: string; // u64 as string
   logTerm?: string;
   index?: string;
   commit?: string;
@@ -55,7 +55,7 @@ export interface RaftEntry {
   index: string;
   term: string;
   entryType: number;
-  data: string | Buffer;   // base64 string (JSON mode) or raw Buffer (MsgPack mode)
+  data: string | Buffer; // base64 string (JSON mode) or raw Buffer (MsgPack mode)
 }
 
 // Convenience type for streams that support 'data' / 'end' / 'error' events
@@ -252,10 +252,7 @@ export class MessageCodec {
    * @param socket  The readable stream (TCP/TLS/Pipe).
    * @param signal  Optional AbortSignal to cancel the read.
    */
-  static async readFrame(
-    socket: Readable,
-    signal?: AbortSignal,
-  ): Promise<Buffer | null> {
+  static async readFrame(socket: Readable, signal?: AbortSignal): Promise<Buffer | null> {
     return new Promise<Buffer | null>((resolve, reject) => {
       // ── State ──────────────────────────────────────────────────────────
       const state = { header: true, length: 0, received: 0, chunks: [] as Buffer[] };
@@ -306,10 +303,9 @@ export class MessageCodec {
               // Sanity check
               if (state.length < 0 || state.length > MessageCodec.MAX_PAYLOAD_SIZE) {
                 cleanup?.();
-                reject(new Error(
-                  `Invalid payload length: ${state.length} ` +
-                  `(max ${MessageCodec.MAX_PAYLOAD_SIZE})`,
-                ));
+                reject(
+                  new Error(`Invalid payload length: ${state.length} ` + `(max ${MessageCodec.MAX_PAYLOAD_SIZE})`),
+                );
                 return;
               }
             }

@@ -11,14 +11,16 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { RaftAdapter } from '../../consensus/core/RaftAdapter';
 
 // Helper: create a RaftAdapter with a mocked internal RaftNode
-function createAdapterWithMockNode(mocks: {
-  isLeader?: boolean;
-  getLeader?: number | null;
-  submitCommandSuccess?: boolean;
-  submitCommandError?: string;
-  getNodeId?: number;
-  stopHeartbeatTimer?: boolean;
-} = {}): RaftAdapter {
+function createAdapterWithMockNode(
+  mocks: {
+    isLeader?: boolean;
+    getLeader?: number | null;
+    submitCommandSuccess?: boolean;
+    submitCommandError?: string;
+    getNodeId?: number;
+    stopHeartbeatTimer?: boolean;
+  } = {},
+): RaftAdapter {
   const adapter = new RaftAdapter({
     id: 1,
     peers: [2, 3],
@@ -37,9 +39,7 @@ function createAdapterWithMockNode(mocks: {
 
   const mockNode = {
     isLeader: vi.fn().mockResolvedValue(mocks.isLeader ?? true),
-    getLeaderId: vi.fn().mockReturnValue(
-      mocks.getLeader !== undefined ? String(mocks.getLeader) : '1',
-    ),
+    getLeaderId: vi.fn().mockReturnValue(mocks.getLeader !== undefined ? String(mocks.getLeader) : '1'),
     getNodeId: vi.fn().mockReturnValue(String(mocks.getNodeId ?? 1)),
     submitCommand: vi.fn().mockResolvedValue({
       success: mocks.submitCommandSuccess !== false,
@@ -58,9 +58,7 @@ function createAdapterWithMockNode(mocks: {
 describe('RaftAdapter.transferLeadership', () => {
   it('should throw when not the leader', async () => {
     const adapter = createAdapterWithMockNode({ isLeader: false });
-    await expect(adapter.transferLeadership('2')).rejects.toThrow(
-      'Only the leader can transfer leadership',
-    );
+    await expect(adapter.transferLeadership('2')).rejects.toThrow('Only the leader can transfer leadership');
   });
 
   it('should stop heartbeat and succeed when target becomes leader', async () => {
@@ -93,15 +91,20 @@ describe('RaftAdapter.transferLeadership', () => {
     expect(timerManager.stopHeartbeatTimer).toHaveBeenCalled();
   });
 
-  it('should throw on timeout when leader does not change', { timeout: 15_000 }, async () => {
-    const adapter = createAdapterWithMockNode({
-      isLeader: true,
-      getLeader: 1, // Always returns self (same as nodeId)
-      getNodeId: 1,
-    });
+  it(
+    'should throw on timeout when leader does not change',
+    { timeout: 15_000 },
+    async () => {
+      const adapter = createAdapterWithMockNode({
+        isLeader: true,
+        getLeader: 1, // Always returns self (same as nodeId)
+        getNodeId: 1,
+      });
 
-    await expect(adapter.transferLeadership('2')).rejects.toThrow(/timed out/);
-  }, 15_000);
+      await expect(adapter.transferLeadership('2')).rejects.toThrow(/timed out/);
+    },
+    15_000,
+  );
 });
 
 describe('RaftAdapter.stopHeartbeat', () => {

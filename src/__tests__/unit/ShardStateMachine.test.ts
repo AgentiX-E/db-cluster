@@ -44,7 +44,9 @@ describe('ShardStateMachine', () => {
     });
 
     it('should propagate errors from applyHandler', async () => {
-      const handler = vi.fn().mockImplementation(() => { throw new Error('apply failed'); });
+      const handler = vi.fn().mockImplementation(() => {
+        throw new Error('apply failed');
+      });
       const sm = new ShardStateMachine({ applyHandler: handler });
 
       const command: Command = { type: 'command', payload: 'data' };
@@ -106,7 +108,9 @@ describe('ShardStateMachine', () => {
 
     it('should handle async callback', async () => {
       let restored = false;
-      const callback = vi.fn().mockImplementation(async () => { restored = true; });
+      const callback = vi.fn().mockImplementation(async () => {
+        restored = true;
+      });
       const sm = new ShardStateMachine({ installSnapshotCallback: callback });
 
       await sm.installSnapshot(Buffer.from('data'));
@@ -120,7 +124,9 @@ describe('ShardStateMachine', () => {
 
       const sm = new ShardStateMachine({
         takeSnapshotCallback: () => state,
-        installSnapshotCallback: (data: Buffer) => { state = data; },
+        installSnapshotCallback: (data: Buffer) => {
+          state = data;
+        },
       });
 
       // Take snapshot of current state

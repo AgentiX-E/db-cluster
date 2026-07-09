@@ -45,14 +45,7 @@ describe('LeaderTransferHandler', () => {
     it('should return error when not leader', async () => {
       isLeaderFn = vi.fn().mockResolvedValue(false);
 
-      const result = await handler.transfer(
-        mockRaftNode,
-        1,
-        '2',
-        proposeFn,
-        getLeaderFn,
-        isLeaderFn,
-      );
+      const result = await handler.transfer(mockRaftNode, 1, '2', proposeFn, getLeaderFn, isLeaderFn);
 
       expect(result.success).toBe(false);
       expect(result.error).toContain('Only the leader can transfer leadership');
@@ -62,14 +55,7 @@ describe('LeaderTransferHandler', () => {
       // Manually set the flag
       (handler as any).transferInProgress = true;
 
-      const result = await handler.transfer(
-        mockRaftNode,
-        1,
-        '2',
-        proposeFn,
-        getLeaderFn,
-        isLeaderFn,
-      );
+      const result = await handler.transfer(mockRaftNode, 1, '2', proposeFn, getLeaderFn, isLeaderFn);
 
       expect(result.success).toBe(false);
       expect(result.error).toContain('already in progress');
@@ -84,14 +70,7 @@ describe('LeaderTransferHandler', () => {
         return 2; // new leader!
       });
 
-      const result = await handler.transfer(
-        mockRaftNode,
-        1,
-        '2',
-        proposeFn,
-        getLeaderFn,
-        isLeaderFn,
-      );
+      const result = await handler.transfer(mockRaftNode, 1, '2', proposeFn, getLeaderFn, isLeaderFn);
 
       expect(result.success).toBe(true);
       expect(result.newLeader).toBe('2');
@@ -111,14 +90,7 @@ describe('LeaderTransferHandler', () => {
         return 2;
       });
 
-      const result = await handler.transfer(
-        mockRaftNode,
-        1,
-        '2',
-        proposeFn,
-        getLeaderFn,
-        isLeaderFn,
-      );
+      const result = await handler.transfer(mockRaftNode, 1, '2', proposeFn, getLeaderFn, isLeaderFn);
 
       expect(result.success).toBe(true);
       expect(result.newLeader).toBe('2');
@@ -128,14 +100,7 @@ describe('LeaderTransferHandler', () => {
     it('should return timeout when leader never changes', async () => {
       getLeaderFn = vi.fn().mockResolvedValue(1); // never changes
 
-      const result = await handler.transfer(
-        mockRaftNode,
-        1,
-        '2',
-        proposeFn,
-        getLeaderFn,
-        isLeaderFn,
-      );
+      const result = await handler.transfer(mockRaftNode, 1, '2', proposeFn, getLeaderFn, isLeaderFn);
 
       expect(result.success).toBe(false);
       expect(result.error).toContain('Timed out');
@@ -145,19 +110,10 @@ describe('LeaderTransferHandler', () => {
       const simpleRaftNode = { step: vi.fn(), id: '1' };
 
       // Leader never changes
-      const result = await handler.transfer(
-        simpleRaftNode,
-        1,
-        '2',
-        proposeFn,
-        getLeaderFn,
-        isLeaderFn,
-      );
+      const result = await handler.transfer(simpleRaftNode, 1, '2', proposeFn, getLeaderFn, isLeaderFn);
 
       expect(result.success).toBe(false);
-      expect(simpleRaftNode.step).toHaveBeenCalledWith(
-        expect.objectContaining({ msgType: 13, to: 2, from: 1 }),
-      );
+      expect(simpleRaftNode.step).toHaveBeenCalledWith(expect.objectContaining({ msgType: 13, to: 2, from: 1 }));
     });
   });
 
@@ -178,7 +134,7 @@ describe('LeaderTransferHandler', () => {
       );
 
       // Allow microtasks to process (transferInProgress should be true now)
-      await new Promise(r => setTimeout(r, 10));
+      await new Promise((r) => setTimeout(r, 10));
 
       // Note: The flag is set after isLeader check, so it should be true by now
       // The transfer will eventually timeout

@@ -42,7 +42,11 @@ describe('SqliteMetaStorage', () => {
 
   afterEach(() => {
     sqlite.close();
-    try { fs.rmSync(path.dirname(dbPath), { recursive: true, force: true }); } catch { /* ignore */ }
+    try {
+      fs.rmSync(path.dirname(dbPath), { recursive: true, force: true });
+    } catch {
+      /* ignore */
+    }
   });
 
   it('should return null when no data stored', async () => {
@@ -94,7 +98,11 @@ describe('SqliteLogStorage', () => {
 
   afterEach(() => {
     sqlite.close();
-    try { fs.rmSync(path.dirname(dbPath), { recursive: true, force: true }); } catch { /* ignore */ }
+    try {
+      fs.rmSync(path.dirname(dbPath), { recursive: true, force: true });
+    } catch {
+      /* ignore */
+    }
   });
 
   it('should return empty meta on fresh storage', async () => {
@@ -191,7 +199,12 @@ describe('SqliteLogStorage', () => {
   it('should write NOOP and CONFIG entry types', async () => {
     await log.append([
       { index: 1, term: 1, type: LogEntryType.NOOP },
-      { index: 2, term: 1, type: LogEntryType.CONFIG, config: { voters: [{ id: '1', address: 'addr1' }], learners: [] } },
+      {
+        index: 2,
+        term: 1,
+        type: LogEntryType.CONFIG,
+        config: { voters: [{ id: '1', address: 'addr1' }], learners: [] },
+      },
     ]);
 
     const e1 = await log.getEntry(1);
@@ -216,7 +229,11 @@ describe('SqliteSnapshotStorage', () => {
 
   afterEach(() => {
     sqlite.close();
-    try { fs.rmSync(path.dirname(dbPath), { recursive: true, force: true }); } catch { /* ignore */ }
+    try {
+      fs.rmSync(path.dirname(dbPath), { recursive: true, force: true });
+    } catch {
+      /* ignore */
+    }
   });
 
   it('should return null when no snapshot exists', async () => {
@@ -289,7 +306,11 @@ describe('SqliteConfigStorage', () => {
 
   afterEach(() => {
     sqlite.close();
-    try { fs.rmSync(path.dirname(dbPath), { recursive: true, force: true }); } catch { /* ignore */ }
+    try {
+      fs.rmSync(path.dirname(dbPath), { recursive: true, force: true });
+    } catch {
+      /* ignore */
+    }
   });
 
   it('should return null when no config stored', async () => {
@@ -299,7 +320,10 @@ describe('SqliteConfigStorage', () => {
 
   it('should write and read voters and learners', async () => {
     await config.write(
-      [{ id: '1', address: 'node1:5001' }, { id: '2', address: 'node2:5002' }],
+      [
+        { id: '1', address: 'node1:5001' },
+        { id: '2', address: 'node2:5002' },
+      ],
       [{ id: '3', address: 'node3:5003' }],
     );
 
@@ -313,10 +337,7 @@ describe('SqliteConfigStorage', () => {
 
   it('should overwrite previously stored config', async () => {
     await config.write([{ id: 'old', address: 'old:5001' }], []);
-    await config.write(
-      [{ id: 'new', address: 'new:5001' }],
-      [],
-    );
+    await config.write([{ id: 'new', address: 'new:5001' }], []);
 
     const data = await config.read();
     expect(data!.voters).toHaveLength(1);
@@ -338,7 +359,11 @@ describe('SqliteNodeStorage (aggregate)', () => {
 
   afterEach(() => {
     sqlite.close();
-    try { fs.rmSync(path.dirname(dbPath), { recursive: true, force: true }); } catch { /* ignore */ }
+    try {
+      fs.rmSync(path.dirname(dbPath), { recursive: true, force: true });
+    } catch {
+      /* ignore */
+    }
   });
 
   it('should expose all four sub-storages', () => {
@@ -376,7 +401,10 @@ describe('SqliteNodeStorage (aggregate)', () => {
 
     // Config
     await nodeStorage.config.write(
-      [{ id: '1', address: 'node1:5001' }, { id: '2', address: 'node2:5002' }],
+      [
+        { id: '1', address: 'node1:5001' },
+        { id: '2', address: 'node2:5002' },
+      ],
       [],
     );
 

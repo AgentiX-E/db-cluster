@@ -23,7 +23,6 @@ import { AdaptiveElectionConfig, DEFAULT_ADAPTIVE_ELECTION_CONFIG } from '../../
 import pino from 'pino';
 const logger = pino({ level: process.env.LOG_LEVEL || 'info' });
 
-
 export class AdaptiveElectionTimeout {
   private config: AdaptiveElectionConfig;
   private rttSamples: number[] = [];
@@ -41,10 +40,7 @@ export class AdaptiveElectionTimeout {
    * Start the periodic recalculation timer.
    */
   start(): void {
-    this.recalcTimer = setInterval(
-      () => this.recalculate(),
-      this.config.recalculationIntervalMs,
-    );
+    this.recalcTimer = setInterval(() => this.recalculate(), this.config.recalculationIntervalMs);
   }
 
   /**
@@ -114,17 +110,14 @@ export class AdaptiveElectionTimeout {
     const recommended = Math.round(rttInTicks * (this.config.rttMultiplier ?? 2));
 
     // Clamp within bounds
-    const newTick = Math.max(
-      this.config.minTick,
-      Math.min(this.config.maxTick, recommended),
-    );
+    const newTick = Math.max(this.config.minTick, Math.min(this.config.maxTick, recommended));
 
     if (newTick !== this.currentTick) {
       const oldTick = this.currentTick;
       this.currentTick = newTick;
       logger.info(
         `[AdaptiveElection] Tick changed: ${oldTick} → ${newTick} ` +
-        `(avgRTT=${avgRtt.toFixed(1)}ms, multiplier=${this.config.rttMultiplier})`,
+          `(avgRTT=${avgRtt.toFixed(1)}ms, multiplier=${this.config.rttMultiplier})`,
       );
       this.onChange?.(newTick, oldTick);
     }

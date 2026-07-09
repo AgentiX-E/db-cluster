@@ -47,5 +47,8 @@ export interface IShardStrategy {
   /**
    * Validate that a distribution meets the strategy's constraints.
    */
-  validateDistribution(distribution: Record<string, string[]>, replicationFactor: number): Promise<OperationResult<boolean>>;
+  validateDistribution(
+    distribution: Record<string, string[]>,
+    replicationFactor: number,
+  ): Promise<OperationResult<boolean>>;
 }

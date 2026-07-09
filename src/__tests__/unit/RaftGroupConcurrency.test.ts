@@ -72,7 +72,9 @@ vi.mock('../../consensus/core/RaftAdapter', () => ({
 function createMockReplica(): IShardReplica {
   let applied = 0;
   return {
-    apply: vi.fn().mockImplementation(async () => { applied++; }),
+    apply: vi.fn().mockImplementation(async () => {
+      applied++;
+    }),
     getAppliedIndex: vi.fn().mockImplementation(async () => applied),
     lastAppliedIndex: vi.fn(() => applied),
     shardId: vi.fn(() => 0),
@@ -96,7 +98,10 @@ function makeEntry(data: string): ApplyEntry {
   return { index: 0, term: 1, command: data, data: Buffer.from(data) };
 }
 
-function createGroup(replica?: IShardReplica, outbox?: IOutboxWriter): {
+function createGroup(
+  replica?: IShardReplica,
+  outbox?: IOutboxWriter,
+): {
   group: RaftGroup;
   outbox: IOutboxWriter;
   replica: IShardReplica;
@@ -106,7 +111,9 @@ function createGroup(replica?: IShardReplica, outbox?: IOutboxWriter): {
   const group = new RaftGroup(
     0,
     { id: 1, peers: [1, 2, 3], electionTick: 10, heartbeatTick: 2, snapshotInterval: 10000 },
-    r, o, '/tmp/snap',
+    r,
+    o,
+    '/tmp/snap',
     { batchSize: 10, batchIntervalMs: 5000 },
   );
   return { group, outbox: o, replica: r };
@@ -198,7 +205,7 @@ describe('RaftGroup Concurrency Model', () => {
       try {
         flushActiveCount++;
         maxConcurrentFlush = Math.max(maxConcurrentFlush, flushActiveCount);
-        await new Promise(r => setTimeout(r, 5));
+        await new Promise((r) => setTimeout(r, 5));
       } finally {
         flushActiveCount--;
         release();
@@ -226,17 +233,21 @@ describe('RaftGroup Concurrency Model', () => {
   //
   it('AC 26.6: Stop during active propose completes cleanly', async () => {
     mockRaftAdapter.propose.mockImplementation(async () => {
-      await new Promise(r => setTimeout(r, 50));
+      await new Promise((r) => setTimeout(r, 50));
       return { index: '5', term: '2' };
     });
 
     const { group } = createGroup();
     const proposePromise = group.propose(makeEntry('data')).catch(() => {});
     group.stop();
-    await new Promise(r => setTimeout(r, 100));
+    await new Promise((r) => setTimeout(r, 100));
 
     // Must not hang or produce unhandled rejection
-    try { await proposePromise; } catch { /* acceptable */ }
+    try {
+      await proposePromise;
+    } catch {
+      /* acceptable */
+    }
   });
 
   //
@@ -247,7 +258,7 @@ describe('RaftGroup Concurrency Model', () => {
     mockRaftAdapter.propose.mockImplementation(async () => {
       const idx = committedIndices.length + 1;
       committedIndices.push(idx);
-      await new Promise(r => setTimeout(r, 3));
+      await new Promise((r) => setTimeout(r, 3));
       return { index: String(idx), term: '2' };
     });
 
@@ -299,7 +310,7 @@ describe('RaftGroup Concurrency Model', () => {
   //
   it('AC 26.9: enterReadOnlyMode concurrent with propose', async () => {
     mockRaftAdapter.propose.mockImplementation(async () => {
-      await new Promise(r => setTimeout(r, 30));
+      await new Promise((r) => setTimeout(r, 30));
       return { index: '5', term: '2' };
     });
 
@@ -307,11 +318,15 @@ describe('RaftGroup Concurrency Model', () => {
 
     // Start propose, then enter read-only
     const proposePromise = group.propose(makeEntry('data')).catch(() => {});
-    await new Promise(r => setTimeout(r, 5));
+    await new Promise((r) => setTimeout(r, 5));
     await group.enterReadOnlyMode();
 
     expect(group.isReadOnly()).toBe(true);
-    try { await proposePromise; } catch { /* ok */ }
+    try {
+      await proposePromise;
+    } catch {
+      /* ok */
+    }
   }, 10000);
 
   //
@@ -319,7 +334,7 @@ describe('RaftGroup Concurrency Model', () => {
   //
   it('AC 26.10: Membership change concurrent with propose', async () => {
     mockRaftAdapter.propose.mockImplementation(async () => {
-      await new Promise(r => setTimeout(r, 10));
+      await new Promise((r) => setTimeout(r, 10));
       return { index: '5', term: '2' };
     });
 
@@ -330,14 +345,16 @@ describe('RaftGroup Concurrency Model', () => {
       proposePromises.push(group.propose(makeEntry(`data-${i}`)).catch(() => {}));
     }
 
-    const membershipPromise = group.proposeMembershipChange({
-      type: 'join',
-      nodeId: '4',
-      timestamp: Date.now(),
-      changeId: 'test-change',
-      oldPeers: [1, 2, 3],
-      newPeers: [1, 2, 3, 4],
-    }).catch(() => {});
+    const membershipPromise = group
+      .proposeMembershipChange({
+        type: 'join',
+        nodeId: '4',
+        timestamp: Date.now(),
+        changeId: 'test-change',
+        oldPeers: [1, 2, 3],
+        newPeers: [1, 2, 3, 4],
+      })
+      .catch(() => {});
 
     await expect(Promise.all([...proposePromises, membershipPromise])).resolves.toBeDefined();
   }, 15000);

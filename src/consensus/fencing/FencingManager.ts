@@ -22,7 +22,6 @@
 import pino from 'pino';
 const logger = pino({ level: process.env.LOG_LEVEL || 'info' });
 
-
 // ── Types ────────────────────────────────────────────────────────
 
 export interface FencingConfig {
@@ -185,10 +184,7 @@ export class FencingManager {
         existing.lastHeartbeatTs = now;
 
         if (wasFenced) {
-          logger.info(
-            { shardId, term, leaderId },
-            '[FencingManager] Shard recovered — new term from leader heartbeat',
-          );
+          logger.info({ shardId, term, leaderId }, '[FencingManager] Shard recovered — new term from leader heartbeat');
         }
         return;
       }
@@ -202,10 +198,7 @@ export class FencingManager {
       } else {
         // fenced with same term — this is an old leader trying to serve
         // Ignore it. The shard stays fenced.
-        logger.warn(
-          { shardId, term, leaderId },
-          '[FencingManager] Ignored heartbeat from fenced shard (same term)',
-        );
+        logger.warn({ shardId, term, leaderId }, '[FencingManager] Ignored heartbeat from fenced shard (same term)');
       }
     } else {
       // New shard: start tracking
@@ -374,10 +367,7 @@ export class FencingManager {
             try {
               cb(reason);
             } catch (err: any) {
-              logger.error(
-                { err: err.message },
-                '[FencingManager] Fence callback error',
-              );
+              logger.error({ err: err.message }, '[FencingManager] Fence callback error');
             }
           }
 
@@ -392,10 +382,7 @@ export class FencingManager {
               try {
                 cb(reason);
               } catch (err: any) {
-                logger.error(
-                  { err: err.message },
-                  '[FencingManager] Panic callback error',
-                );
+                logger.error({ err: err.message }, '[FencingManager] Panic callback error');
               }
             }
             // If no panic callbacks registered, emit a fatal error to trigger default handling
@@ -403,7 +390,7 @@ export class FencingManager {
               logger.error(
                 { shardId: shard.shardId, reason },
                 '[FencingManager] No panic callbacks registered — fence state set to fenced. ' +
-                'Call onPanic() to register a controlled shutdown handler.',
+                  'Call onPanic() to register a controlled shutdown handler.',
               );
             }
           }

@@ -70,8 +70,19 @@ function makeResponseMsg(requestId: string, overrides?: Record<string, unknown>)
 
 function makeHandlerMsg(requestId?: string): any {
   return requestId
-    ? { requestId, msg: { type: 'RequestVote', direction: 'request', payload: { term: 1, candidateId: '1', lastLogIndex: 0, lastLogTerm: 0 } } }
-    : { type: 'RequestVote', direction: 'request', payload: { term: 1, candidateId: '1', lastLogIndex: 0, lastLogTerm: 0 } };
+    ? {
+        requestId,
+        msg: {
+          type: 'RequestVote',
+          direction: 'request',
+          payload: { term: 1, candidateId: '1', lastLogIndex: 0, lastLogTerm: 0 },
+        },
+      }
+    : {
+        type: 'RequestVote',
+        direction: 'request',
+        payload: { term: 1, candidateId: '1', lastLogIndex: 0, lastLogTerm: 0 },
+      };
 }
 
 function parseRequestId(call: any): string {
@@ -106,9 +117,13 @@ describe('BatchedRaftTransport (Unit)', () => {
   });
 
   afterEach(async () => {
-    try { await transport.stop(); } catch { /* rejections from pending cleanup */ }
+    try {
+      await transport.stop();
+    } catch {
+      /* rejections from pending cleanup */
+    }
     // Wait for any lingering microtasks (stop() rejections) to settle
-    await new Promise(r => setTimeout(r, 10));
+    await new Promise((r) => setTimeout(r, 10));
   });
 
   // ── AC 8.1: Concurrent 100 RPCs ──────────────────────────────────────
@@ -120,7 +135,7 @@ describe('BatchedRaftTransport (Unit)', () => {
     }
 
     // Allow microtasks to flush so requestIds are assigned
-    await new Promise(r => setImmediate(r));
+    await new Promise((r) => setImmediate(r));
 
     expect(mockSendToPeer).toHaveBeenCalledTimes(100);
 
@@ -155,14 +170,14 @@ describe('BatchedRaftTransport (Unit)', () => {
       promises.push(transport.send('2', makeMsg()));
     }
 
-    await new Promise(r => setImmediate(r));
+    await new Promise((r) => setImmediate(r));
     expect(mockSendToPeer).toHaveBeenCalledTimes(10);
 
     // Wait a tiny bit for timers to register, then stop
     await transport.stop();
 
     const results = await Promise.allSettled(promises);
-    const rejected = results.filter(r => r.status === 'rejected');
+    const rejected = results.filter((r) => r.status === 'rejected');
     expect(rejected.length).toBe(10);
     for (const r of rejected) {
       if (r.status === 'rejected') expect(r.reason.message).toMatch(/stopped/i);
@@ -175,7 +190,7 @@ describe('BatchedRaftTransport (Unit)', () => {
     for (let i = 0; i < 10000; i++) {
       transport.send('2', makeMsg()).catch(() => {});
     }
-    await new Promise(r => setImmediate(r));
+    await new Promise((r) => setImmediate(r));
 
     expect(mockSendToPeer).toHaveBeenCalledTimes(10000);
 
@@ -187,7 +202,7 @@ describe('BatchedRaftTransport (Unit)', () => {
 
   it('AC 8.5 — response message routed to correct pending request', async () => {
     const sendPromise = transport.send('2', makeMsg());
-    await new Promise(r => setImmediate(r));
+    await new Promise((r) => setImmediate(r));
 
     const requestId = parseRequestId(mockSendToPeer.mock.calls[0]);
 
@@ -200,7 +215,9 @@ describe('BatchedRaftTransport (Unit)', () => {
   // ── AC 8.6: Handler error resilience ────────────────────────────────
 
   it('AC 8.6 — handler rejection does not crash transport', async () => {
-    const handler: MessageHandler = async () => { throw new Error('Handler failure'); };
+    const handler: MessageHandler = async () => {
+      throw new Error('Handler failure');
+    };
     transport.onMessage(handler);
 
     // Simulate incoming request — should not crash
@@ -208,7 +225,7 @@ describe('BatchedRaftTransport (Unit)', () => {
 
     // Transport should still be usable for sending
     transport.send('2', makeMsg()).catch(() => {}); // fire-and-forget, will be cleaned by afterEach
-    await new Promise(r => setImmediate(r));
+    await new Promise((r) => setImmediate(r));
     expect(mockSendToPeer).toHaveBeenCalled();
   }, 5000);
 
@@ -221,7 +238,7 @@ describe('BatchedRaftTransport (Unit)', () => {
       promises.push(transport.send('2', makeMsg()));
     }
 
-    await new Promise(r => setImmediate(r));
+    await new Promise((r) => setImmediate(r));
     expect(mockSendToPeer).toHaveBeenCalledTimes(count);
 
     const requestIds = mockSendToPeer.mock.calls.map(parseRequestId);
@@ -242,7 +259,7 @@ describe('BatchedRaftTransport (Unit)', () => {
 
   it('AC 8.8 — response after timeout is ignored', async () => {
     const sendPromise = transport.send('2', makeMsg());
-    await new Promise(r => setImmediate(r));
+    await new Promise((r) => setImmediate(r));
 
     const requestId = parseRequestId(mockSendToPeer.mock.calls[0]);
 

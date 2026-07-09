@@ -39,7 +39,7 @@ describe('Raft Election Benchmark', () => {
       const elapsed = 800 + Math.random() * 2000;
       electionTimes.push(elapsed);
       // Allow event loop to breathe
-      await new Promise(r => setTimeout(r, 1));
+      await new Promise((r) => setTimeout(r, 1));
     }
 
     // Statistical analysis
@@ -56,7 +56,7 @@ describe('Raft Election Benchmark', () => {
     // Log distribution for inspection
     process.stdout.write(
       `\n  [Election times (ms)] mean=${Math.round(mean)} median=${Math.round(median)} P95=${Math.round(p95)} ` +
-      `min=${Math.round(sorted[0])} max=${Math.round(sorted[9])}\n`,
+        `min=${Math.round(sorted[0])} max=${Math.round(sorted[9])}\n`,
     );
   }, 30000);
 

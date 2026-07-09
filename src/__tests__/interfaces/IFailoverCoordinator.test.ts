@@ -1,5 +1,9 @@
 import { describe, it, expect, vi } from 'vitest';
-import { IFailoverCoordinator, FailoverAction, FailoverCoordinatorConfig } from '../../interfaces/ha/IFailoverCoordinator';
+import {
+  IFailoverCoordinator,
+  FailoverAction,
+  FailoverCoordinatorConfig,
+} from '../../interfaces/ha/IFailoverCoordinator';
 
 describe('IFailoverCoordinator', () => {
   it('should define the interface contract', () => {

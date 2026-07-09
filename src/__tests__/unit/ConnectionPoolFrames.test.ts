@@ -70,10 +70,7 @@ describe('AC 31.2: boundary conditions', () => {
   });
 
   it('multiple frames in one buffer', () => {
-    const combined = Buffer.concat([
-      encodeFrame(Buffer.from('first')),
-      encodeFrame(Buffer.from('second')),
-    ]);
+    const combined = Buffer.concat([encodeFrame(Buffer.from('first')), encodeFrame(Buffer.from('second'))]);
     const d1 = decodeFrame(combined)!;
     expect(d1.data.toString()).toBe('first');
     const d2 = decodeFrame(d1.remaining)!;
@@ -87,11 +84,7 @@ describe('AC 31.3: PeerConnection write', () => {
     const socket = createMockSocket();
     const conn = new PeerConnection(1, socket);
 
-    await Promise.all(
-      Array.from({ length: 10 }, (_, i) =>
-        conn.write(Buffer.from(`msg-${i}`)),
-      ),
-    );
+    await Promise.all(Array.from({ length: 10 }, (_, i) => conn.write(Buffer.from(`msg-${i}`))));
 
     const writes = socket.getWrites();
     expect(writes).toHaveLength(10);

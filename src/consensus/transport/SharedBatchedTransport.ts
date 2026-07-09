@@ -25,7 +25,7 @@
  *
  * Wire format is identical to BatchedRaftTransport:
  *   { requestId: string, msg: RPCMessage }
- * 
+ *
  * The _shardId field is embedded at the wireMsg level (not inside msg)
  * for correct routing by NodeTransport._handleIncoming.
  */
@@ -61,12 +61,7 @@ export class SharedBatchedTransport implements Transport {
    * @param selfNodeId  Local node string ID
    * @param requestTimeoutMs  RPC timeout in ms (default 15000)
    */
-  constructor(
-    shared: SharedTransport,
-    shardId: number,
-    selfNodeId: string,
-    requestTimeoutMs = 15000,
-  ) {
+  constructor(shared: SharedTransport, shardId: number, selfNodeId: string, requestTimeoutMs = 15000) {
     this.shared = shared;
     this.shardId = shardId;
     this.selfNodeId = selfNodeId;
@@ -111,7 +106,9 @@ export class SharedBatchedTransport implements Transport {
     this.pendingMap.clear();
   }
 
-  isStarted(): boolean { return this.started; }
+  isStarted(): boolean {
+    return this.started;
+  }
 
   onMessage(handler: MessageHandler): void {
     this.handler = handler;
@@ -190,23 +187,25 @@ export class SharedBatchedTransport implements Transport {
     const from = wireMsg.from ?? '';
     const innerMsg = inner as any;
 
-    this.handler(from, innerMsg).then((response: RPCMessage) => {
-      if (!response || !this.started) return;
+    this.handler(from, innerMsg)
+      .then((response: RPCMessage) => {
+        if (!response || !this.started) return;
 
-      // Send response back through SharedTransport with matching requestId
-      const respRequestId = requestId || nextRequestId();
-      const respWireMsg: any = {
-        requestId: respRequestId,
-        to: from,       // Route response back to the sender
-        msg: { ...response, direction: 'response' as const },
-      };
-      respWireMsg._shardId = this.shardId;
+        // Send response back through SharedTransport with matching requestId
+        const respRequestId = requestId || nextRequestId();
+        const respWireMsg: any = {
+          requestId: respRequestId,
+          to: from, // Route response back to the sender
+          msg: { ...response, direction: 'response' as const },
+        };
+        respWireMsg._shardId = this.shardId;
 
-      this.doSend(respWireMsg).catch(() => {
-        // Silently drop response send failures — upstream will timeout
+        this.doSend(respWireMsg).catch(() => {
+          // Silently drop response send failures — upstream will timeout
+        });
+      })
+      .catch(() => {
+        // Handler error — upstream will timeout
       });
-    }).catch(() => {
-      // Handler error — upstream will timeout
-    });
   }
 }

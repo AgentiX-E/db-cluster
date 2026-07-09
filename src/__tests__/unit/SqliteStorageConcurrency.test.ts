@@ -60,9 +60,15 @@ describe('SqliteStorage Concurrency & Isolation', () => {
 
   afterEach(() => {
     for (const p of dbPaths) {
-      try { fs.unlinkSync(p); } catch {}
-      try { fs.unlinkSync(p + '-wal'); } catch {}
-      try { fs.unlinkSync(p + '-shm'); } catch {}
+      try {
+        fs.unlinkSync(p);
+      } catch {}
+      try {
+        fs.unlinkSync(p + '-wal');
+      } catch {}
+      try {
+        fs.unlinkSync(p + '-shm');
+      } catch {}
     }
     dbPaths.length = 0;
   });
@@ -71,19 +77,18 @@ describe('SqliteStorage Concurrency & Isolation', () => {
   // AC 27.1
   //
   it('AC 27.1: Concurrent append on separate DB files works independently', async () => {
-    const p1 = tempDbPath(); dbPaths.push(p1);
-    const p2 = tempDbPath(); dbPaths.push(p2);
-    const p3 = tempDbPath(); dbPaths.push(p3);
+    const p1 = tempDbPath();
+    dbPaths.push(p1);
+    const p2 = tempDbPath();
+    dbPaths.push(p2);
+    const p3 = tempDbPath();
+    dbPaths.push(p3);
 
     const s1 = createStorage(p1);
     const s2 = createStorage(p2);
     const s3 = createStorage(p3);
 
-    await Promise.all([
-      appendEntries(s1, 10),
-      appendEntries(s2, 20),
-      appendEntries(s3, 30),
-    ]);
+    await Promise.all([appendEntries(s1, 10), appendEntries(s2, 20), appendEntries(s3, 30)]);
 
     expect(s1.getLastIndex()).toBe(10);
     expect(s2.getLastIndex()).toBe(20);
@@ -99,15 +104,18 @@ describe('SqliteStorage Concurrency & Isolation', () => {
   // AC 27.2
   //
   it('AC 27.2: 50 concurrent append calls maintain log ordering', async () => {
-    const p = tempDbPath(); dbPaths.push(p);
+    const p = tempDbPath();
+    dbPaths.push(p);
     const storage = createStorage(p);
 
     const promises: Promise<void>[] = [];
     for (let i = 1; i <= 50; i++) {
       const idx = i;
-      promises.push(Promise.resolve().then(() => {
-        storage.appendLogEntry(idx, 1, 0, Buffer.from(`entry-${idx}`));
-      }));
+      promises.push(
+        Promise.resolve().then(() => {
+          storage.appendLogEntry(idx, 1, 0, Buffer.from(`entry-${idx}`));
+        }),
+      );
     }
 
     await Promise.all(promises);
@@ -124,7 +132,8 @@ describe('SqliteStorage Concurrency & Isolation', () => {
   // AC 27.3
   //
   it('AC 27.3: Concurrent getLogEntries + appendLogEntry is safe', async () => {
-    const p = tempDbPath(); dbPaths.push(p);
+    const p = tempDbPath();
+    dbPaths.push(p);
     const storage = createStorage(p);
 
     await appendEntries(storage, 10);
@@ -142,7 +151,8 @@ describe('SqliteStorage Concurrency & Isolation', () => {
   // AC 27.4
   //
   it('AC 27.4: Batch mode with begin/endBatch works correctly', async () => {
-    const p = tempDbPath(); dbPaths.push(p);
+    const p = tempDbPath();
+    dbPaths.push(p);
     const storage = createStorage(p);
 
     await appendEntries(storage, 5);
@@ -166,13 +176,16 @@ describe('SqliteStorage Concurrency & Isolation', () => {
     const instances: SqliteStorage[] = [];
 
     for (let i = 0; i < 5; i++) {
-      const p = tempDbPath(); dbPaths.push(p);
+      const p = tempDbPath();
+      dbPaths.push(p);
       instances.push(createStorage(p));
     }
 
-    await Promise.all(instances.map(async (s, idx) => {
-      await appendEntries(s, (idx + 1) * 5);
-    }));
+    await Promise.all(
+      instances.map(async (s, idx) => {
+        await appendEntries(s, (idx + 1) * 5);
+      }),
+    );
 
     for (let i = 0; i < 5; i++) {
       const expected = (i + 1) * 5;
@@ -184,7 +197,8 @@ describe('SqliteStorage Concurrency & Isolation', () => {
   // AC 27.6
   //
   it('AC 27.6: Truncate + append produces no data loss', async () => {
-    const p = tempDbPath(); dbPaths.push(p);
+    const p = tempDbPath();
+    dbPaths.push(p);
     const storage = createStorage(p);
 
     await appendEntries(storage, 20);
@@ -200,7 +214,8 @@ describe('SqliteStorage Concurrency & Isolation', () => {
   // AC 27.7
   //
   it('AC 27.7: WAL checkpoint does not block concurrent reads', async () => {
-    const p = tempDbPath(); dbPaths.push(p);
+    const p = tempDbPath();
+    dbPaths.push(p);
     const storage = createStorage(p);
 
     await appendEntries(storage, 100);
@@ -217,7 +232,8 @@ describe('SqliteStorage Concurrency & Isolation', () => {
   // AC 27.8
   //
   it('AC 27.8: KV metadata persistence', async () => {
-    const p = tempDbPath(); dbPaths.push(p);
+    const p = tempDbPath();
+    dbPaths.push(p);
     const storage = createStorage(p);
 
     // Store hard state as KV
@@ -242,7 +258,8 @@ describe('SqliteStorage Concurrency & Isolation', () => {
   // AC 27.9
   //
   it('AC 27.9: Snapshot compaction preserves data integrity', async () => {
-    const p = tempDbPath(); dbPaths.push(p);
+    const p = tempDbPath();
+    dbPaths.push(p);
     const storage = createStorage(p);
 
     await appendEntries(storage, 100);
@@ -269,7 +286,8 @@ describe('SqliteStorage Concurrency & Isolation', () => {
   // AC 27.10
   //
   it('AC 27.10: Append + truncate round-trip', async () => {
-    const p = tempDbPath(); dbPaths.push(p);
+    const p = tempDbPath();
+    dbPaths.push(p);
     const storage = createStorage(p);
 
     await appendEntries(storage, 100);

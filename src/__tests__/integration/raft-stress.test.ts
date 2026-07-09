@@ -87,7 +87,11 @@ function createTempDir(prefix: string): string {
 }
 
 function cleanupTempDir(dir: string): void {
-  try { fs.rmSync(dir, { recursive: true, force: true }); } catch { /* ignore */ }
+  try {
+    fs.rmSync(dir, { recursive: true, force: true });
+  } catch {
+    /* ignore */
+  }
 }
 
 function createNode(
@@ -101,7 +105,11 @@ function createNode(
   customEnv?: Record<string, string>,
 ): TestNode {
   const nodeConfig = JSON.stringify({
-    id, host: '127.0.0.1', port, dataDir, peers,
+    id,
+    host: '127.0.0.1',
+    port,
+    dataDir,
+    peers,
     cert: { key: cert.key, cert: cert.cert, ca: cert.ca },
   });
   const clusterConfig = JSON.stringify({ electionTick, heartbeatTick });
@@ -129,12 +137,8 @@ function createNode(
   return { id, process: cp, messages, port, dataDir };
 }
 
-async function waitForMessage(
-  node: TestNode,
-  type: string,
-  timeoutMs: number = 15000,
-): Promise<WorkerMessage> {
-  const existing = node.messages.find(m => m.type === type);
+async function waitForMessage(node: TestNode, type: string, timeoutMs: number = 15000): Promise<WorkerMessage> {
+  const existing = node.messages.find((m) => m.type === type);
   if (existing) return existing;
 
   return new Promise((resolve, reject) => {
@@ -153,11 +157,8 @@ async function waitForMessage(
   });
 }
 
-async function waitForLeaderElection(
-  nodes: TestNode[],
-  timeoutMs: number = LEADER_ELECTION_TIMEOUT,
-): Promise<number> {
-  const promises = nodes.map(n => waitForMessage(n, 'leader-elected', timeoutMs));
+async function waitForLeaderElection(nodes: TestNode[], timeoutMs: number = LEADER_ELECTION_TIMEOUT): Promise<number> {
+  const promises = nodes.map((n) => waitForMessage(n, 'leader-elected', timeoutMs));
   // Return the first one that resolves (but wait for all to ensure leader is known)
   const result = await Promise.race(promises);
   // Give others a moment to catch up
@@ -178,7 +179,11 @@ async function proposeToLeader(
     }
 
     const timer = setTimeout(() => {
-      try { leaderNode.process.removeListener('message', handler); } catch { /* ignore */ }
+      try {
+        leaderNode.process.removeListener('message', handler);
+      } catch {
+        /* ignore */
+      }
       reject(new Error(`Propose timeout on node ${leaderNode.id}`));
     }, 30000);
 
@@ -186,7 +191,11 @@ async function proposeToLeader(
       // Success: log committed
       if (msg && msg.type === 'log-committed') {
         clearTimeout(timer);
-        try { leaderNode.process.removeListener('message', handler); } catch { /* ignore */ }
+        try {
+          leaderNode.process.removeListener('message', handler);
+        } catch {
+          /* ignore */
+        }
         resolve({ index: msg.data?.index ?? 0 });
         return;
       }
@@ -194,18 +203,28 @@ async function proposeToLeader(
       // Error from propose on follower — auto-redirect to current leader
       if (msg && msg.type === 'error' && msg.data?.command === 'propose' && msg.data?.currentLeader) {
         clearTimeout(timer);
-        try { leaderNode.process.removeListener('message', handler); } catch { /* ignore */ }
+        try {
+          leaderNode.process.removeListener('message', handler);
+        } catch {
+          /* ignore */
+        }
 
         // Limit redirect depth to prevent infinite loops during rapid leader changes
         if (redirectDepth >= 5) {
-          reject(new Error(`Propose redirect exceeded max depth (5) on node ${leaderNode.id}, leader=${msg.data.currentLeader}`));
+          reject(
+            new Error(
+              `Propose redirect exceeded max depth (5) on node ${leaderNode.id}, leader=${msg.data.currentLeader}`,
+            ),
+          );
           return;
         }
 
         const actualLeaderId = msg.data.currentLeader;
-        const actualLeader = nodeList.find(n => n.id === actualLeaderId);
+        const actualLeader = nodeList.find((n) => n.id === actualLeaderId);
         if (actualLeader && actualLeader.id !== leaderNode.id) {
-          proposeToLeader(actualLeader, data, nodeList, redirectDepth + 1).then(resolve).catch(reject);
+          proposeToLeader(actualLeader, data, nodeList, redirectDepth + 1)
+            .then(resolve)
+            .catch(reject);
         } else {
           reject(new Error(`Follower rejected, leader ${actualLeaderId} not found`));
         }
@@ -232,7 +251,11 @@ function getStatus(node: TestNode): Promise<any> {
     const handler = (msg: any) => {
       if (msg && msg.type === 'status') {
         clearTimeout(timer);
-        try { node.process.removeListener('message', handler); } catch { /* ignore */ }
+        try {
+          node.process.removeListener('message', handler);
+        } catch {
+          /* ignore */
+        }
         resolve(msg.data);
       }
     };
@@ -249,23 +272,35 @@ function getStatus(node: TestNode): Promise<any> {
 async function gracefulShutdown(node: TestNode): Promise<void> {
   return new Promise((resolve) => {
     const timer = setTimeout(() => {
-      try { node.process.kill('SIGKILL'); } catch { /* ignore */ }
+      try {
+        node.process.kill('SIGKILL');
+      } catch {
+        /* ignore */
+      }
     }, 5000);
     node.process.on('exit', () => {
       clearTimeout(timer);
       resolve();
     });
-    try { node.process.send?.({ command: 'shutdown' }); } catch { /* ignore */ }
+    try {
+      node.process.send?.({ command: 'shutdown' });
+    } catch {
+      /* ignore */
+    }
     // If process is already dead, resolve immediately
     setTimeout(() => {
-      try { node.process.kill('SIGKILL'); } catch { /* ignore */ }
+      try {
+        node.process.kill('SIGKILL');
+      } catch {
+        /* ignore */
+      }
       resolve();
     }, 100);
   });
 }
 
 async function stopNodes(nodes: TestNode[]): Promise<void> {
-  await Promise.all(nodes.map(n => gracefulShutdown(n).catch(() => {})));
+  await Promise.all(nodes.map((n) => gracefulShutdown(n).catch(() => {})));
   await sleep(500);
 }
 
@@ -286,7 +321,7 @@ describe('Raft Transport Stress & Resilience', () => {
       const status = await getStatus(n);
       const leaderId = (status as any)?.leader;
       if (leaderId) {
-        const leader = nodes.find(c => c.id === leaderId);
+        const leader = nodes.find((c) => c.id === leaderId);
         if (leader) return leader;
       }
     }
@@ -294,10 +329,7 @@ describe('Raft Transport Stress & Resilience', () => {
   }
 
   /** Propose sequentially with leader re-discovery on failure */
-  async function proposeInBatches(
-    count: number,
-    batchSize: number = 50,
-  ): Promise<number> {
+  async function proposeInBatches(count: number, batchSize: number = 50): Promise<number> {
     let committed = 0;
     for (let i = 0; i < count; i += batchSize) {
       const leader = await findLeader();
@@ -320,7 +352,9 @@ describe('Raft Transport Stress & Resilience', () => {
     for (const node of nodes) {
       try {
         node.process.kill('SIGKILL');
-      } catch { /* ignore */ }
+      } catch {
+        /* ignore */
+      }
     }
     // Clean up data dirs
     for (const node of nodes) {
@@ -350,17 +384,14 @@ describe('Raft Transport Stress & Resilience', () => {
     for (let i = 0; i < count; i++) {
       const id = i + 1;
       // Only pass OTHER nodes as peers (not self)
-      const peers = allPeerList.filter(p => p.id !== id);
+      const peers = allPeerList.filter((p) => p.id !== id);
       const dataDir = createTempDir(`node-${id}`);
-      const node = createNode(
-        id, ports[i], peers, certs[i], dataDir,
-        electionTick, heartbeatTick, customEnv,
-      );
+      const node = createNode(id, ports[i], peers, certs[i], dataDir, electionTick, heartbeatTick, customEnv);
       nodes.push(node);
     }
 
     // Wait for all nodes to be ready
-    await Promise.all(nodes.map(n => waitForMessage(n, 'ready', 15000)));
+    await Promise.all(nodes.map((n) => waitForMessage(n, 'ready', 15000)));
 
     // Wait for leader election
     return await waitForLeaderElection(nodes, LEADER_ELECTION_TIMEOUT);
@@ -368,236 +399,260 @@ describe('Raft Transport Stress & Resilience', () => {
 
   // ── AC 8.11: 1000 sequential proposals ──────────────────────────────
 
-  it('AC 8.11 — 1000 sequential propose + commit on 3-node cluster', async () => {
-    await startCluster(3);
-    await sleep(1000);
+  it(
+    'AC 8.11 — 1000 sequential propose + commit on 3-node cluster',
+    async () => {
+      await startCluster(3);
+      await sleep(1000);
 
-    // Propose 1000 entries in small concurrent batches
-    // Small batch size avoids IPC message queue saturation on the worker process
-    let committed = 0;
-    const batchSize = 20;
-    const perBatchTimeoutMs = 20000;
+      // Propose 1000 entries in small concurrent batches
+      // Small batch size avoids IPC message queue saturation on the worker process
+      let committed = 0;
+      const batchSize = 20;
+      const perBatchTimeoutMs = 20000;
 
-    for (let i = 0; i < 1000; i += batchSize) {
-      const leader = await findLeader();
-      const batchPromises: Promise<void>[] = [];
-      const remaining = Math.min(batchSize, 1000 - i);
-      for (let j = 0; j < remaining; j++) {
-        batchPromises.push(proposeToLeader(leader, `batch-entry-${i + j}`, nodes));
+      for (let i = 0; i < 1000; i += batchSize) {
+        const leader = await findLeader();
+        const batchPromises: Promise<void>[] = [];
+        const remaining = Math.min(batchSize, 1000 - i);
+        for (let j = 0; j < remaining; j++) {
+          batchPromises.push(proposeToLeader(leader, `batch-entry-${i + j}`, nodes));
+        }
+        // Wait for the batch with a per-batch timeout
+        const batchResult = await Promise.race([
+          Promise.all(batchPromises).then(() => remaining),
+          new Promise<number>((r) => setTimeout(() => r(0), perBatchTimeoutMs)),
+        ]);
+
+        if (batchResult === 0) {
+          // Batch timed out — still count successes from what committed
+          break;
+        }
+        committed += remaining;
       }
-      // Wait for the batch with a per-batch timeout
-      const batchResult = await Promise.race([
-        Promise.all(batchPromises).then(() => remaining),
-        new Promise<number>(r => setTimeout(() => r(0), perBatchTimeoutMs)),
-      ]);
+      expect(committed).toBeGreaterThanOrEqual(950);
 
-      if (batchResult === 0) {
-        // Batch timed out — still count successes from what committed
-        break;
-      }
-      committed += remaining;
-    }
-    expect(committed).toBeGreaterThanOrEqual(950);
-
-    // Cross-check: leader's log should reflect most committed entries.
-    // Note: IPC-based getStatus may lag behind committed count.
-    // We accept 50% as the minimum threshold due to async batching
-    // in the worker process and communication delays.
-    await sleep(3000);
-    const finalLeader = await findLeader();
-    const leaderStats = await getStatus(finalLeader);
-    expect(leaderStats).toHaveProperty('logLength');
-    const expectedMin = Math.max(Math.floor(committed * 0.5), 500);
-    expect((leaderStats as any).logLength).toBeGreaterThanOrEqual(expectedMin);
-  }, STRESS_TIMEOUT);
+      // Cross-check: leader's log should reflect most committed entries.
+      // Note: IPC-based getStatus may lag behind committed count.
+      // We accept 50% as the minimum threshold due to async batching
+      // in the worker process and communication delays.
+      await sleep(3000);
+      const finalLeader = await findLeader();
+      const leaderStats = await getStatus(finalLeader);
+      expect(leaderStats).toHaveProperty('logLength');
+      const expectedMin = Math.max(Math.floor(committed * 0.5), 500);
+      expect((leaderStats as any).logLength).toBeGreaterThanOrEqual(expectedMin);
+    },
+    STRESS_TIMEOUT,
+  );
 
   // ── AC 8.12: 100 concurrent proposals ───────────────────────────────
 
-  it('AC 8.12 — 100 concurrent proposals to leader', async () => {
-    await startCluster(3);
-    await sleep(1000);
+  it(
+    'AC 8.12 — 100 concurrent proposals to leader',
+    async () => {
+      await startCluster(3);
+      await sleep(1000);
 
-    const leader = await findLeader();
+      const leader = await findLeader();
 
-    // Send 100 proposals concurrently
-    const promises: Promise<void>[] = [];
-    for (let i = 0; i < 100; i++) {
-      promises.push(proposeToLeader(leader, `concurrent-${i}`, nodes));
-    }
+      // Send 100 proposals concurrently
+      const promises: Promise<void>[] = [];
+      for (let i = 0; i < 100; i++) {
+        promises.push(proposeToLeader(leader, `concurrent-${i}`, nodes));
+      }
 
-    await Promise.all(promises);
+      await Promise.all(promises);
 
-    // Verify leader committed all entries
-    await sleep(1000);
-    const finalLeader = await findLeader();
-    const leaderStats = await getStatus(finalLeader);
-    expect((leaderStats as any).logLength).toBeGreaterThanOrEqual(100);
-  }, STRESS_TIMEOUT);
+      // Verify leader committed all entries
+      await sleep(1000);
+      const finalLeader = await findLeader();
+      const leaderStats = await getStatus(finalLeader);
+      expect((leaderStats as any).logLength).toBeGreaterThanOrEqual(100);
+    },
+    STRESS_TIMEOUT,
+  );
 
   // ── AC 8.13: Connection drop and reconnect ──────────────────────────
 
-  it('AC 8.13 — connection drop and reconnect', async () => {
-    await startCluster(3);
-    await sleep(1000);
+  it(
+    'AC 8.13 — connection drop and reconnect',
+    async () => {
+      await startCluster(3);
+      await sleep(1000);
 
-    const leader = await findLeader();
+      const leader = await findLeader();
 
-    // Propose some entries first (batch 1: 10 entries)
-    await proposeToLeader(leader, 'pre-drop-1', nodes);
-    await proposeToLeader(leader, 'pre-drop-2', nodes);
-    await proposeToLeader(leader, 'pre-drop-3', nodes);
+      // Propose some entries first (batch 1: 10 entries)
+      await proposeToLeader(leader, 'pre-drop-1', nodes);
+      await proposeToLeader(leader, 'pre-drop-2', nodes);
+      await proposeToLeader(leader, 'pre-drop-3', nodes);
 
-    // Get a non-leader node to kill
-    const follower = nodes.find(n => n.id !== leader.id)!;
-    const followerPort = follower.port;
+      // Get a non-leader node to kill
+      const follower = nodes.find((n) => n.id !== leader.id)!;
+      const followerPort = follower.port;
 
-    // Kill the follower
-    await gracefulShutdown(follower);
-    cleanupTempDir(follower.dataDir);
-    await sleep(1500);
+      // Kill the follower
+      await gracefulShutdown(follower);
+      cleanupTempDir(follower.dataDir);
+      await sleep(1500);
 
-    // Majority should still function — propose more entries
-    const currentLeader = await findLeader();
-    await proposeToLeader(currentLeader, 'post-drop-1', nodes);
-    await proposeToLeader(currentLeader, 'post-drop-2', nodes);
+      // Majority should still function — propose more entries
+      const currentLeader = await findLeader();
+      await proposeToLeader(currentLeader, 'post-drop-1', nodes);
+      await proposeToLeader(currentLeader, 'post-drop-2', nodes);
 
-    // Restart the killed node with same port
-    const peerList: PeerInfo[] = [];
-    for (const n of nodes) {
-      if (n.id !== follower.id) {
-        peerList.push({ id: n.id, host: '127.0.0.1', port: n.port });
+      // Restart the killed node with same port
+      const peerList: PeerInfo[] = [];
+      for (const n of nodes) {
+        if (n.id !== follower.id) {
+          peerList.push({ id: n.id, host: '127.0.0.1', port: n.port });
+        }
       }
-    }
 
-    const newDataDir = createTempDir(`node-${follower.id}-restart`);
-    const newNode = createNode(follower.id, followerPort, peerList, certs[follower.id - 1], newDataDir);
-    // Replace the node in the list
-    const idx = nodes.findIndex(n => n.id === follower.id);
-    cleanupTempDir(nodes[idx].dataDir);
-    nodes[idx] = newNode;
+      const newDataDir = createTempDir(`node-${follower.id}-restart`);
+      const newNode = createNode(follower.id, followerPort, peerList, certs[follower.id - 1], newDataDir);
+      // Replace the node in the list
+      const idx = nodes.findIndex((n) => n.id === follower.id);
+      cleanupTempDir(nodes[idx].dataDir);
+      nodes[idx] = newNode;
 
-    // Wait for it to come online
-    await waitForMessage(newNode, 'ready', 15000);
-    await sleep(2000); // Allow log catch-up from leader
+      // Wait for it to come online
+      await waitForMessage(newNode, 'ready', 15000);
+      await sleep(2000); // Allow log catch-up from leader
 
-    // Wait for the restarted node to catch up via heartbeats
-    await sleep(5000);
+      // Wait for the restarted node to catch up via heartbeats
+      await sleep(5000);
 
-    // Verify: no error checking self — just ensure proposals were committed
-    // The restarted node may still be catching up via heartbeat
-    const statusNew = await getStatus(newNode);
-    const followers = nodes.filter(n => n.id !== newNode.id);
-    const followerStatuses = await Promise.all(followers.map(n => getStatus(n)));
-    const leaderStatus = followerStatuses[0];
-    // Leader should have all 5 entries committed
-    if (leaderStatus) {
-      expect((leaderStatus as any).logLength).toBeGreaterThanOrEqual(5);
-    }
-  }, STRESS_TIMEOUT);
+      // Verify: no error checking self — just ensure proposals were committed
+      // The restarted node may still be catching up via heartbeat
+      const statusNew = await getStatus(newNode);
+      const followers = nodes.filter((n) => n.id !== newNode.id);
+      const followerStatuses = await Promise.all(followers.map((n) => getStatus(n)));
+      const leaderStatus = followerStatuses[0];
+      // Leader should have all 5 entries committed
+      if (leaderStatus) {
+        expect((leaderStatus as any).logLength).toBeGreaterThanOrEqual(5);
+      }
+    },
+    STRESS_TIMEOUT,
+  );
 
   // ── AC 8.14: Log catch-up ─────────────────────────────────────────
 
-  it('AC 8.14 — log catch-up (start 2 nodes, propose 100, add 3rd)', async () => {
-    // Start with 2 nodes (slower election ticks for stability)
-    await startCluster(2, undefined, 15, 5);
-    await sleep(1000);
+  it(
+    'AC 8.14 — log catch-up (start 2 nodes, propose 100, add 3rd)',
+    async () => {
+      // Start with 2 nodes (slower election ticks for stability)
+      await startCluster(2, undefined, 15, 5);
+      await sleep(1000);
 
-    const leader = await findLeader();
+      const leader = await findLeader();
 
-    // Propose 100 entries on 2-node cluster
-    let committed = 0;
-    for (let i = 0; i < 100; i++) {
-      await proposeToLeader(leader, `catchup-${i}`, nodes);
-      committed++;
-    }
-    expect(committed).toBe(100);
+      // Propose 100 entries on 2-node cluster
+      let committed = 0;
+      for (let i = 0; i < 100; i++) {
+        await proposeToLeader(leader, `catchup-${i}`, nodes);
+        committed++;
+      }
+      expect(committed).toBe(100);
 
-    // Add 3rd node — peers are the existing 2 nodes (not self)
-    const port3 = await getFreePort();
-    const peerList: PeerInfo[] = nodes.map(n => ({ id: n.id, host: '127.0.0.1', port: n.port }));
+      // Add 3rd node — peers are the existing 2 nodes (not self)
+      const port3 = await getFreePort();
+      const peerList: PeerInfo[] = nodes.map((n) => ({ id: n.id, host: '127.0.0.1', port: n.port }));
 
-    const dataDir3 = createTempDir('node-3-catchup');
-    const node3 = createNode(3, port3, peerList, certs[2], dataDir3, 15, 3);
-    nodes.push(node3);
+      const dataDir3 = createTempDir('node-3-catchup');
+      const node3 = createNode(3, port3, peerList, certs[2], dataDir3, 15, 3);
+      nodes.push(node3);
 
-    await waitForMessage(node3, 'ready', 15000);
-    await sleep(5000); // Allow log catch-up via heartbeats
+      await waitForMessage(node3, 'ready', 15000);
+      await sleep(5000); // Allow log catch-up via heartbeats
 
-    // Verify the two original nodes have 100+ entries (3rd node may still be catching up)
-    const existingStatuses = await Promise.all(nodes.filter(n => n.id !== 3).map(n => getStatus(n)));
-    for (const s of existingStatuses) {
-      expect((s as any).logLength).toBeGreaterThanOrEqual(100);
-    }
-  }, STRESS_TIMEOUT);
+      // Verify the two original nodes have 100+ entries (3rd node may still be catching up)
+      const existingStatuses = await Promise.all(nodes.filter((n) => n.id !== 3).map((n) => getStatus(n)));
+      for (const s of existingStatuses) {
+        expect((s as any).logLength).toBeGreaterThanOrEqual(100);
+      }
+    },
+    STRESS_TIMEOUT,
+  );
 
   // ── AC 8.15: Partition scenario ────────────────────────────────────
 
-  it('AC 8.15 — partition scenario (isolate, majority continues, heal, catch up)', async () => {
-    await startCluster(3, undefined, 12, 4);
-    await sleep(1000);
+  it(
+    'AC 8.15 — partition scenario (isolate, majority continues, heal, catch up)',
+    async () => {
+      await startCluster(3, undefined, 12, 4);
+      await sleep(1000);
 
-    const leader = await findLeader();
+      const leader = await findLeader();
 
-    // Propose 10 entries before partition
-    for (let i = 0; i < 10; i++) {
-      await proposeToLeader(leader, `pre-partition-${i}`, nodes);
-    }
+      // Propose 10 entries before partition
+      for (let i = 0; i < 10; i++) {
+        await proposeToLeader(leader, `pre-partition-${i}`, nodes);
+      }
 
-    // Isolate one node (a non-leader)
-    const toIsolate = nodes.find(n => n.id !== leader.id)!;
-    await gracefulShutdown(toIsolate).catch(() => {});
-    cleanupTempDir(toIsolate.dataDir);
-    await sleep(2000);
+      // Isolate one node (a non-leader)
+      const toIsolate = nodes.find((n) => n.id !== leader.id)!;
+      await gracefulShutdown(toIsolate).catch(() => {});
+      cleanupTempDir(toIsolate.dataDir);
+      await sleep(2000);
 
-    // Majority (leader + 1 other) continues — propose 10 more
-    const leaderAfter = await findLeader();
-    for (let i = 0; i < 10; i++) {
-      await proposeToLeader(leaderAfter, `post-partition-${i}`, nodes);
-    }
+      // Majority (leader + 1 other) continues — propose 10 more
+      const leaderAfter = await findLeader();
+      for (let i = 0; i < 10; i++) {
+        await proposeToLeader(leaderAfter, `post-partition-${i}`, nodes);
+      }
 
-    // Heal: restart the isolated node (rejoining existing cluster)
-    const portNew = await getFreePort();
-    const survivingPeers = nodes
-      .filter(n => n.id !== toIsolate.id)
-      .map(n => ({ id: n.id, host: '127.0.0.1', port: n.port }));
+      // Heal: restart the isolated node (rejoining existing cluster)
+      const portNew = await getFreePort();
+      const survivingPeers = nodes
+        .filter((n) => n.id !== toIsolate.id)
+        .map((n) => ({ id: n.id, host: '127.0.0.1', port: n.port }));
 
-    const newDataDir = createTempDir('node-isolated-heal');
-    const healedNode = createNode(toIsolate.id, portNew, survivingPeers, certs[toIsolate.id - 1], newDataDir);
-    const idx = nodes.findIndex(n => n.id === toIsolate.id);
-    cleanupTempDir(nodes[idx].dataDir);
-    nodes[idx] = healedNode;
+      const newDataDir = createTempDir('node-isolated-heal');
+      const healedNode = createNode(toIsolate.id, portNew, survivingPeers, certs[toIsolate.id - 1], newDataDir);
+      const idx = nodes.findIndex((n) => n.id === toIsolate.id);
+      cleanupTempDir(nodes[idx].dataDir);
+      nodes[idx] = healedNode;
 
-    await waitForMessage(healedNode, 'ready', 15000);
-    await sleep(5000); // Allow catch-up via heartbeats
+      await waitForMessage(healedNode, 'ready', 15000);
+      await sleep(5000); // Allow catch-up via heartbeats
 
-    // Verify the nodes that stayed (not isolated) have all entries
-    const survivingAfter = nodes.filter(n => n.id !== toIsolate.id);
-    const survivedStatuses = await Promise.all(survivingAfter.map(n => getStatus(n)));
-    for (const s of survivedStatuses) {
-      expect((s as any).logLength).toBeGreaterThanOrEqual(20);
-    }
-  }, STRESS_TIMEOUT);
+      // Verify the nodes that stayed (not isolated) have all entries
+      const survivingAfter = nodes.filter((n) => n.id !== toIsolate.id);
+      const survivedStatuses = await Promise.all(survivingAfter.map((n) => getStatus(n)));
+      for (const s of survivedStatuses) {
+        expect((s as any).logLength).toBeGreaterThanOrEqual(20);
+      }
+    },
+    STRESS_TIMEOUT,
+  );
 
   // ── AC 8.16: requestId collision under high PID counter ────────────
 
-  it('AC 8.16 — requestId collision under high counter from same PID', async () => {
-    await startCluster(3);
-    await sleep(1000);
+  it(
+    'AC 8.16 — requestId collision under high counter from same PID',
+    async () => {
+      await startCluster(3);
+      await sleep(1000);
 
-    const leader = await findLeader();
+      const leader = await findLeader();
 
-    // Send 10 proposals, verifying correct requestId → response matching
-    const count = 10;
-    const promises: Promise<void>[] = [];
-    for (let i = 0; i < count; i++) {
-      promises.push(proposeToLeader(leader, `collision-test-${i}`, nodes));
-    }
-    await Promise.all(promises);
+      // Send 10 proposals, verifying correct requestId → response matching
+      const count = 10;
+      const promises: Promise<void>[] = [];
+      for (let i = 0; i < count; i++) {
+        promises.push(proposeToLeader(leader, `collision-test-${i}`, nodes));
+      }
+      await Promise.all(promises);
 
-    // Verify all committed on majority nodes
-    await sleep(500);
-    const leaderNew = await findLeader();
-    const status = await getStatus(leaderNew);
-    expect((status as any).logLength).toBeGreaterThanOrEqual(count);
-  }, STRESS_TIMEOUT);
+      // Verify all committed on majority nodes
+      await sleep(500);
+      const leaderNew = await findLeader();
+      const status = await getStatus(leaderNew);
+      expect((status as any).logLength).toBeGreaterThanOrEqual(count);
+    },
+    STRESS_TIMEOUT,
+  );
 });

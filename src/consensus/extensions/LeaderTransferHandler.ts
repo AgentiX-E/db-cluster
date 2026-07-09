@@ -1,7 +1,7 @@
 /**
  * LeaderTransferHandler — R3: Graceful leadership transfer
  *
- * Implements the LeaderTransfer RPC as specified in the Raft paper (§8 — 
+ * Implements the LeaderTransfer RPC as specified in the Raft paper (§8 —
  * Cluster Membership Changes) and extended in etcd Raft.
  *
  * The protocol:
@@ -23,7 +23,6 @@ import { LeaderTransferResult } from '../../interfaces/types';
 
 import pino from 'pino';
 const logger = pino({ level: process.env.LOG_LEVEL || 'info' });
-
 
 // ──────────────────────────────────────────
 //  Types
@@ -130,11 +129,7 @@ export class LeaderTransferHandler {
       }
 
       // Step 3: Wait for leadership change
-      const result = await this.waitForNewLeader(
-        currentLeaderId,
-        getLeaderFn,
-        startTime,
-      );
+      const result = await this.waitForNewLeader(currentLeaderId, getLeaderFn, startTime);
 
       this.transferInProgress = false;
       return result;
@@ -147,11 +142,7 @@ export class LeaderTransferHandler {
         logger.info('[LeaderTransfer] Trying campaign-based fallback');
         try {
           await raftNode.stepDown(this.config.timeoutMs);
-          const result = await this.waitForNewLeader(
-            currentLeaderId,
-            getLeaderFn,
-            startTime,
-          );
+          const result = await this.waitForNewLeader(currentLeaderId, getLeaderFn, startTime);
           if (result.success) return result;
         } catch {
           // Fallback also failed
@@ -206,7 +197,7 @@ export class LeaderTransferHandler {
           durationMs,
         };
       }
-      await new Promise(resolve => setTimeout(resolve, this.config.pollIntervalMs));
+      await new Promise((resolve) => setTimeout(resolve, this.config.pollIntervalMs));
     }
 
     // Timeout — leadership didn't change

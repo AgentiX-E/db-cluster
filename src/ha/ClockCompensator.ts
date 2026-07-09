@@ -80,11 +80,7 @@ export class ClockCompensator {
    * Estimate offset with a known peer node ID.
    * Returns the EMA offset for that peer.
    */
-  estimateOffsetForPeer(
-    peerNodeId: string,
-    remoteTimestamp: number,
-    localRecvMs?: number,
-  ): number {
+  estimateOffsetForPeer(peerNodeId: string, remoteTimestamp: number, localRecvMs?: number): number {
     const localNow = localRecvMs ?? Date.now();
     const oneWayDelay = Math.max(0, (localNow - remoteTimestamp) / 2);
     const offset = remoteTimestamp - localNow + oneWayDelay;

@@ -48,7 +48,9 @@ export class BatchedRaftTransport implements Transport {
     this.requestTimeoutMs = requestTimeoutMs;
   }
 
-  get underlying(): RaftTcpTransport { return this.transport; }
+  get underlying(): RaftTcpTransport {
+    return this.transport;
+  }
 
   async addPeer?(_peerId: string, _address: string): Promise<void> {}
   removePeer?(_peerId: string): void {}
@@ -72,7 +74,9 @@ export class BatchedRaftTransport implements Transport {
     await this.transport.stop();
   }
 
-  isStarted(): boolean { return this.started; }
+  isStarted(): boolean {
+    return this.started;
+  }
 
   onMessage(handler: MessageHandler): void {
     this.handler = handler;
@@ -123,15 +127,17 @@ export class BatchedRaftTransport implements Transport {
     // Request direction: forward to handler
     if (!this.handler) return;
 
-    this.handler(fromPeerId, inner).then((response: RPCMessage) => {
-      if (!response || !this.started) return;
+    this.handler(fromPeerId, inner)
+      .then((response: RPCMessage) => {
+        if (!response || !this.started) return;
 
-      const respRequestId = requestId || nextRequestId();
-      const respPeerNumId = parseInt(fromPeerId, 10);
-      if (isNaN(respPeerNumId)) return;
+        const respRequestId = requestId || nextRequestId();
+        const respPeerNumId = parseInt(fromPeerId, 10);
+        if (isNaN(respPeerNumId)) return;
 
-      const frame = encodeWireBuffer({ requestId: respRequestId, msg: response as any });
-      this.transport.sendToPeer(respPeerNumId, frame);
-    }).catch(() => {});
+        const frame = encodeWireBuffer({ requestId: respRequestId, msg: response as any });
+        this.transport.sendToPeer(respPeerNumId, frame);
+      })
+      .catch(() => {});
   }
 }

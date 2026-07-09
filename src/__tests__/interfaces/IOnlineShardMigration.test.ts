@@ -3,13 +3,7 @@ import { IOnlineShardMigration, IMigrationConfig } from '../../interfaces/shard/
 
 describe('IOnlineShardMigration', () => {
   it('should define the interface contract with all methods', () => {
-    const methods: (keyof IOnlineShardMigration)[] = [
-      'startMigration',
-      'getStatus',
-      'cutover',
-      'rollback',
-      'cancel',
-    ];
+    const methods: (keyof IOnlineShardMigration)[] = ['startMigration', 'getStatus', 'cutover', 'rollback', 'cancel'];
     expect(methods.length).toBe(5);
   });
 
@@ -63,7 +57,8 @@ describe('IOnlineShardMigration', () => {
 
     const mock: IOnlineShardMigration = {
       startMigration: vi.fn().mockResolvedValue({ migrationId: 'mig-2' }),
-      getStatus: vi.fn()
+      getStatus: vi
+        .fn()
         .mockResolvedValueOnce({ phase: 'snapshot-copy', progress: 10, remainingBytes: 900_000_000 })
         .mockResolvedValueOnce({ phase: 'incremental-sync', progress: 95, remainingBytes: 50_000_000 })
         .mockResolvedValueOnce({ phase: 'cutover', progress: 100, remainingBytes: 0 }),

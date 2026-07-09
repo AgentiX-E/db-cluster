@@ -16,7 +16,7 @@
 import { compress as zstdCompress, decompress as zstdDecompress } from '@mongodb-js/zstd';
 
 // Magic bytes for compressed frames: 'ZSTC' (0x5A 0x53 0x54 0x43)
-const MAGIC = Buffer.from([0x5A, 0x53, 0x54, 0x43]);
+const MAGIC = Buffer.from([0x5a, 0x53, 0x54, 0x43]);
 const HEADER_SIZE = 8; // 4 magic + 4 original length
 
 const DEFAULT_THRESHOLD = 1024;

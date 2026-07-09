@@ -108,7 +108,9 @@ describe('MessageCodec - Unit', () => {
   it('AC 24.5: encode+decode with entries preserves entry fields', () => {
     const msg: RaftMessage = {
       msgType: 1,
-      from: '1', to: '2', term: '1',
+      from: '1',
+      to: '2',
+      term: '1',
       entries: [
         { index: '10', term: '1', entryType: 0, data: Buffer.from([1, 2, 3]).toString('base64') },
         { index: '11', term: '1', entryType: 1, data: Buffer.from([4, 5, 6]).toString('base64') },
@@ -127,7 +129,9 @@ describe('MessageCodec - Unit', () => {
     const originalData = 'SGVsbG8='; // "Hello" in base64
     const msg: RaftMessage = {
       msgType: 1,
-      from: '1', to: '2', term: '1',
+      from: '1',
+      to: '2',
+      term: '1',
       entries: [{ index: '1', term: '1', entryType: 0, data: originalData }],
     };
     const decoded = encodeAndDecode(msg);
@@ -193,7 +197,9 @@ describe('MessageCodec - Unit', () => {
   it('AC 24.11: normaliseForWasm converts entry index/term to string', () => {
     const raw = {
       msgType: 1,
-      from: 1, to: 2, term: 1,
+      from: 1,
+      to: 2,
+      term: 1,
       entries: [{ index: 1, term: 1, entryType: 0, data: 'dGVzdA==' }],
     };
     const normalised = MessageCodec.normaliseForWasm(raw);
@@ -209,7 +215,9 @@ describe('MessageCodec - Unit', () => {
   it('AC 24.12: normaliseForWasm converts Buffer entry data to base64 string', () => {
     const msg: RaftMessage = {
       msgType: 1,
-      from: '1', to: '2', term: '1',
+      from: '1',
+      to: '2',
+      term: '1',
       entries: [{ index: '1', term: '1', entryType: 0, data: Buffer.from([72, 101, 108, 108, 111]) }],
     };
     // normaliseForWasm converts Buffer entry.data to base64 string
@@ -225,7 +233,9 @@ describe('MessageCodec - Unit', () => {
     const largeData = Buffer.alloc(10000, 'X').toString('base64');
     const msg: RaftMessage = {
       msgType: 1,
-      from: '1', to: '2', term: '1',
+      from: '1',
+      to: '2',
+      term: '1',
       entries: [{ index: '1', term: '1', entryType: 0, data: largeData }],
     };
     const decoded = encodeAndDecode(msg);
@@ -239,8 +249,10 @@ describe('MessageCodec - Unit', () => {
   it('AC 24.14: MsgPack decode with binary entry data', () => {
     const msg: RaftMessage = {
       msgType: 10,
-      from: '5', to: '6', term: '7',
-      entries: [{ index: '1', term: '1', entryType: 0, data: Buffer.from([0xAB, 0xCD]) }],
+      from: '5',
+      to: '6',
+      term: '7',
+      entries: [{ index: '1', term: '1', entryType: 0, data: Buffer.from([0xab, 0xcd]) }],
     };
     const decoded = encodeAndDecodeMsgPack(msg);
     expect(decoded.msgType).toBe(10);
@@ -253,7 +265,9 @@ describe('MessageCodec - Unit', () => {
   it('AC 24.15: MsgPack encode+decode round-trip preserves schema', () => {
     const msg: RaftMessage = {
       msgType: 5,
-      from: '1', to: '2', term: '3',
+      from: '1',
+      to: '2',
+      term: '3',
       logTerm: '2',
       index: '50',
       commit: '30',

@@ -50,9 +50,7 @@ function createMockRaft(term: number = 1, leader?: string): any {
 }
 
 /** Create a mock InstallSnapshotRequest */
-function makeChunk(
-  overrides: Partial<InstallSnapshotRequest> & { data?: string },
-): InstallSnapshotRequest {
+function makeChunk(overrides: Partial<InstallSnapshotRequest> & { data?: string }): InstallSnapshotRequest {
   const buf = Buffer.from(overrides.data ?? 'data');
   return {
     term: 1,
@@ -102,13 +100,18 @@ describe('InstallSnapshotHandler - Unit', () => {
     fs.writeFileSync(filePath, data);
 
     const chunks: InstallSnapshotRequest[] = [];
-    for await (const chunk of handler.createChunks(filePath, {
-      lastIncludedIndex: 200,
-      lastIncludedTerm: 2,
-      nodeId: 1,
-      shardId: 0,
-      timestamp: Date.now(),
-    }, '1', 4096)) {
+    for await (const chunk of handler.createChunks(
+      filePath,
+      {
+        lastIncludedIndex: 200,
+        lastIncludedTerm: 2,
+        nodeId: 1,
+        shardId: 0,
+        timestamp: Date.now(),
+      },
+      '1',
+      4096,
+    )) {
       chunks.push(chunk);
     }
 
@@ -127,10 +130,18 @@ describe('InstallSnapshotHandler - Unit', () => {
     fs.writeFileSync(filePath, Buffer.alloc(100, 'B'));
 
     const chunks: InstallSnapshotRequest[] = [];
-    for await (const chunk of handler.createChunks(filePath, {
-      lastIncludedIndex: 50, lastIncludedTerm: 1,
-      nodeId: 1, shardId: 0, timestamp: Date.now(),
-    }, '1', 4096)) {
+    for await (const chunk of handler.createChunks(
+      filePath,
+      {
+        lastIncludedIndex: 50,
+        lastIncludedTerm: 1,
+        nodeId: 1,
+        shardId: 0,
+        timestamp: Date.now(),
+      },
+      '1',
+      4096,
+    )) {
       chunks.push(chunk);
     }
 
@@ -147,10 +158,18 @@ describe('InstallSnapshotHandler - Unit', () => {
     fs.writeFileSync(filePath, content);
 
     const chunks: any[] = [];
-    for await (const chunk of handler.createChunks(filePath, {
-      lastIncludedIndex: 50, lastIncludedTerm: 1,
-      nodeId: 1, shardId: 0, timestamp: Date.now(),
-    }, '1', 4096)) {
+    for await (const chunk of handler.createChunks(
+      filePath,
+      {
+        lastIncludedIndex: 50,
+        lastIncludedTerm: 1,
+        nodeId: 1,
+        shardId: 0,
+        timestamp: Date.now(),
+      },
+      '1',
+      4096,
+    )) {
       chunks.push(chunk);
     }
 
@@ -206,11 +225,9 @@ describe('InstallSnapshotHandler - Unit', () => {
     const raft = createMockRaft(1);
     const installCallback = vi.fn().mockRejectedValue(new Error('apply failed'));
 
-    await expect(handler.handleChunk(
-      makeChunk({ data: 'fail', offset: 0, done: true }),
-      raft as any,
-      installCallback,
-    )).rejects.toThrow('apply failed');
+    await expect(
+      handler.handleChunk(makeChunk({ data: 'fail', offset: 0, done: true }), raft as any, installCallback),
+    ).rejects.toThrow('apply failed');
   });
 
   //
@@ -221,18 +238,10 @@ describe('InstallSnapshotHandler - Unit', () => {
     const installCallback = vi.fn().mockResolvedValue(undefined);
 
     // Chunk at offset 0 is first — sets lastOffset = 0
-    await handler.handleChunk(
-      makeChunk({ data: 'first', offset: 0, done: false }),
-      raft as any,
-      installCallback,
-    );
+    await handler.handleChunk(makeChunk({ data: 'first', offset: 0, done: false }), raft as any, installCallback);
 
     // Chunk at offset 2 (skip 1) — gap detected (not a failure, just warning)
-    const res = await handler.handleChunk(
-      makeChunk({ data: 'third', offset: 2 }),
-      raft as any,
-      installCallback,
-    );
+    const res = await handler.handleChunk(makeChunk({ data: 'third', offset: 2 }), raft as any, installCallback);
     // Should still accept — gap detection is best-effort
     expect(res.success).toBe(true);
   });
@@ -247,12 +256,13 @@ describe('InstallSnapshotHandler - Unit', () => {
 
     const raft = createMockRaft(1);
 
-    const result = await handler.sendSnapshot(
-      raft as any,
-      '2',
-      filePath,
-      { lastIncludedIndex: 300, lastIncludedTerm: 3, nodeId: 1, shardId: 0, timestamp: Date.now() },
-    );
+    const result = await handler.sendSnapshot(raft as any, '2', filePath, {
+      lastIncludedIndex: 300,
+      lastIncludedTerm: 3,
+      nodeId: 1,
+      shardId: 0,
+      timestamp: Date.now(),
+    });
 
     expect(result).toBe(true);
     // 5000 bytes / 8MB (default) = 1 chunk
@@ -264,10 +274,13 @@ describe('InstallSnapshotHandler - Unit', () => {
   //
   it('AC 20.10: sendSnapshot returns false for missing file', async () => {
     const raft = createMockRaft(1);
-    const result = await handler.sendSnapshot(
-      raft as any, '2', '/nonexistent/path.dat',
-      { lastIncludedIndex: 1, lastIncludedTerm: 1, nodeId: 1, shardId: 0, timestamp: 0 },
-    );
+    const result = await handler.sendSnapshot(raft as any, '2', '/nonexistent/path.dat', {
+      lastIncludedIndex: 1,
+      lastIncludedTerm: 1,
+      nodeId: 1,
+      shardId: 0,
+      timestamp: 0,
+    });
     expect(result).toBe(false);
     expect(raft.step).not.toHaveBeenCalled();
   });
@@ -277,11 +290,7 @@ describe('InstallSnapshotHandler - Unit', () => {
   //
   it('AC 20.11: getAssemblyProgress returns current state', async () => {
     const raft = createMockRaft(1);
-    await handler.handleChunk(
-      makeChunk({ data: 'test', offset: 0 }),
-      raft as any,
-      vi.fn(),
-    );
+    await handler.handleChunk(makeChunk({ data: 'test', offset: 0 }), raft as any, vi.fn());
 
     const progress = handler.getAssemblyProgress();
     expect(progress.length).toBeGreaterThanOrEqual(1);
@@ -322,11 +331,7 @@ describe('InstallSnapshotHandler - Unit', () => {
   //
   it('AC 20.15: reset clears all incoming assembly states', async () => {
     const raft = createMockRaft(1);
-    await handler.handleChunk(
-      makeChunk({ data: 'test', offset: 0 }),
-      raft as any,
-      vi.fn(),
-    );
+    await handler.handleChunk(makeChunk({ data: 'test', offset: 0 }), raft as any, vi.fn());
 
     expect(handler.getAssemblyProgress().length).toBeGreaterThan(0);
     handler.reset();
@@ -338,10 +343,17 @@ describe('InstallSnapshotHandler - Unit', () => {
   //
   it('AC 20.16: createChunks throws for missing file', async () => {
     await expect(async () => {
-      for await (const _chunk of handler.createChunks('/nonexistent', {
-        lastIncludedIndex: 1, lastIncludedTerm: 1,
-        nodeId: 1, shardId: 0, timestamp: 0,
-      }, '1')) {
+      for await (const _chunk of handler.createChunks(
+        '/nonexistent',
+        {
+          lastIncludedIndex: 1,
+          lastIncludedTerm: 1,
+          nodeId: 1,
+          shardId: 0,
+          timestamp: 0,
+        },
+        '1',
+      )) {
         // never reached
       }
     }).rejects.toThrow(/not found/);

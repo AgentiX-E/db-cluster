@@ -56,8 +56,12 @@ class AdapterConsensusLayer implements IConsensusLayer {
     this.adapter = adapter;
   }
 
-  async start(): Promise<void> { /* already started */ }
-  async stop(): Promise<void> { this.adapter.stop(); }
+  async start(): Promise<void> {
+    /* already started */
+  }
+  async stop(): Promise<void> {
+    this.adapter.stop();
+  }
 
   async propose(_shardId: string, value: string): Promise<number> {
     const result = await this.adapter.propose(value);
@@ -85,13 +89,15 @@ class AdapterConsensusLayer implements IConsensusLayer {
     const isLeader = await this.adapter.isLeader();
     const leaderId = await this.adapter.getLeader();
     const progress = await this.adapter.getProgress();
-    return [{
-      shardId: SHARD_ID,
-      leaderId: leaderId ?? 0,
-      isLeader,
-      commitIndex: progress.commit,
-      healthy: true,
-    }];
+    return [
+      {
+        shardId: SHARD_ID,
+        leaderId: leaderId ?? 0,
+        isLeader,
+        commitIndex: progress.commit,
+        healthy: true,
+      },
+    ];
   }
   async campaign(_shardId: string): Promise<void> {}
 
@@ -119,9 +125,15 @@ class AdapterClusterTopology implements IClusterTopology {
     this.alivePeers = new Set(this.peerIds);
   }
 
-  getNodeId(): string { return this.nodeId; }
-  getPeerIds(): string[] { return [...this.peerIds]; }
-  isPeerAlive(peerId: string): boolean { return this.alivePeers.has(peerId); }
+  getNodeId(): string {
+    return this.nodeId;
+  }
+  getPeerIds(): string[] {
+    return [...this.peerIds];
+  }
+  isPeerAlive(peerId: string): boolean {
+    return this.alivePeers.has(peerId);
+  }
   setPeerAlive(peerId: string): void {
     this.alivePeers.add(peerId);
     for (const h of this.handlers) h({ type: 'peer_alive', peerId });
@@ -148,7 +160,7 @@ interface TestNode {
 }
 
 function sleep(ms: number): Promise<void> {
-  return new Promise(r => setTimeout(r, ms));
+  return new Promise((r) => setTimeout(r, ms));
 }
 
 async function waitForLeader(nodes: TestNode[], timeoutMs: number = LEADER_TIMEOUT_MS): Promise<number> {
@@ -157,21 +169,27 @@ async function waitForLeader(nodes: TestNode[], timeoutMs: number = LEADER_TIMEO
     for (const node of nodes) {
       try {
         if (await node.adapter.isLeader()) return node.id;
-      } catch { /* not ready */ }
+      } catch {
+        /* not ready */
+      }
     }
     await sleep(POLL_INTERVAL_MS);
   }
   throw new Error(`No leader elected after ${timeoutMs}ms`);
 }
 
-async function waitForCommitOnAllNodes(nodes: TestNode[], data: string, timeoutMs: number = REPLICATION_TIMEOUT_MS): Promise<void> {
+async function waitForCommitOnAllNodes(
+  nodes: TestNode[],
+  data: string,
+  timeoutMs: number = REPLICATION_TIMEOUT_MS,
+): Promise<void> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
-    const allCommitted = nodes.every(n => n.committed.includes(data));
+    const allCommitted = nodes.every((n) => n.committed.includes(data));
     if (allCommitted) return;
     await sleep(100);
   }
-  const committed = nodes.map(n => `${n.id}: [${n.committed.join(', ')}]`);
+  const committed = nodes.map((n) => `${n.id}: [${n.committed.join(', ')}]`);
   throw new Error(`Commit not replicated: ${committed.join('; ')}`);
 }
 
@@ -208,11 +226,11 @@ describe('HA E2E Integration - 3-node cluster', () => {
     for (let i = 0; i < NODE_COUNT; i++) {
       const id = i + 1;
       const nodeCommitted = committedArrays[i];
-      const nodePeerConfigs = peerConfigs.filter(p => p.id !== id);
+      const nodePeerConfigs = peerConfigs.filter((p) => p.id !== id);
 
       const adapter = new RaftAdapter({
         id,
-        peers: nodePeerConfigs.map(p => p.id),
+        peers: nodePeerConfigs.map((p) => p.id),
         electionTick: ELECTION_TICK,
         heartbeatTick: HEARTBEAT_TICK,
         tickIntervalMs: TICK_INTERVAL_MS,
@@ -243,7 +261,7 @@ describe('HA E2E Integration - 3-node cluster', () => {
       );
 
       const consensus = new AdapterConsensusLayer(adapter);
-      const peerStringIds = nodePeerConfigs.map(p => String(p.id));
+      const peerStringIds = nodePeerConfigs.map((p) => String(p.id));
       const topology = new AdapterClusterTopology(String(id), peerStringIds);
 
       nodes.push({ adapter, consensus, topology, id, committed: nodeCommitted });
@@ -252,10 +270,18 @@ describe('HA E2E Integration - 3-node cluster', () => {
 
   afterAll(async () => {
     for (const node of nodes) {
-      try { node.adapter.stop(); } catch { /* ignore */ }
+      try {
+        node.adapter.stop();
+      } catch {
+        /* ignore */
+      }
     }
     for (const dir of dataDirs) {
-      try { cleanupTempDir(dir); } catch { /* ignore */ }
+      try {
+        cleanupTempDir(dir);
+      } catch {
+        /* ignore */
+      }
     }
   });
 
@@ -266,7 +292,7 @@ describe('HA E2E Integration - 3-node cluster', () => {
     const leaderId = await waitForLeader(nodes);
     expect([1, 2, 3]).toContain(leaderId);
 
-    const leaderNode = nodes.find(n => n.id === leaderId)!;
+    const leaderNode = nodes.find((n) => n.id === leaderId)!;
 
     // Verify topology
     expect(leaderNode.topology.getPeerIds().length).toBeGreaterThanOrEqual(1);
@@ -292,7 +318,7 @@ describe('HA E2E Integration - 3-node cluster', () => {
   //
   it('AC 25.2: Propose + commit on stable 3-node cluster', async () => {
     const leaderId = await waitForLeader(nodes);
-    const leaderNode = nodes.find(n => n.id === leaderId)!;
+    const leaderNode = nodes.find((n) => n.id === leaderId)!;
 
     await leaderNode.adapter.propose('ha-data-1');
     await leaderNode.adapter.propose('ha-data-2');
@@ -306,7 +332,7 @@ describe('HA E2E Integration - 3-node cluster', () => {
   //
   it('AC 25.3: HAConsistencyVerifier verifies consistency with correct API', async () => {
     const leaderId = await waitForLeader(nodes);
-    const leaderNode = nodes.find(n => n.id === leaderId)!;
+    const leaderNode = nodes.find((n) => n.id === leaderId)!;
     const verifier = new HAConsistencyVerifier(leaderNode.consensus);
 
     const result = await verifier.verifyConsistency(SHARD_ID, leaderNode.consensus);
@@ -373,14 +399,10 @@ describe('HA E2E Integration - 3-node cluster', () => {
   //
   it('AC 25.7: HAFailoverDetector registers shard and topology works', async () => {
     const leaderId = await waitForLeader(nodes);
-    const leaderNode = nodes.find(n => n.id === leaderId)!;
+    const leaderNode = nodes.find((n) => n.id === leaderId)!;
 
     // Create detector
-    const detector = new HAFailoverDetector(
-      {},
-      leaderNode.topology,
-      leaderNode.consensus,
-    );
+    const detector = new HAFailoverDetector({}, leaderNode.topology, leaderNode.consensus);
 
     detector.registerShard(SHARD_ID);
 

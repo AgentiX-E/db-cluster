@@ -64,10 +64,7 @@ const DEFAULT_MAX_FAILURES = 0; // unlimited
  * Create a new circuit breaker for a specific peer.
  * Returns the raw opossum breaker instance wrapped with event emitters.
  */
-export function createPeerCircuitBreaker(
-  peerId: number,
-  options?: PeerCircuitBreakerOptions,
-): OpossumBreaker {
+export function createPeerCircuitBreaker(peerId: number, options?: PeerCircuitBreakerOptions): OpossumBreaker {
   const timeout = options?.timeout ?? DEFAULT_TIMEOUT;
   const errorThresholdPercentage = options?.errorThresholdPercentage ?? DEFAULT_ERROR_THRESHOLD;
   const resetTimeout = options?.resetTimeout ?? DEFAULT_RESET_TIMEOUT;
@@ -152,12 +149,22 @@ export class PeerCircuitBreakerWrapper {
 
   private _setupListeners(): void {
     if (!this.breaker) return;
-    this.breaker.on('open', () => { this._state = 'open'; });
-    this.breaker.on('halfOpen', () => { this._state = 'half_open'; });
-    this.breaker.on('close', () => { this._state = 'closed'; });
+    this.breaker.on('open', () => {
+      this._state = 'open';
+    });
+    this.breaker.on('halfOpen', () => {
+      this._state = 'half_open';
+    });
+    this.breaker.on('close', () => {
+      this._state = 'closed';
+    });
     // Track last failure time for Prometheus metrics
-    this.breaker.on('reject', () => { this._lastFailure = Date.now(); });
-    this.breaker.on('failure', () => { this._lastFailure = Date.now(); });
+    this.breaker.on('reject', () => {
+      this._lastFailure = Date.now();
+    });
+    this.breaker.on('failure', () => {
+      this._lastFailure = Date.now();
+    });
   }
 
   /**

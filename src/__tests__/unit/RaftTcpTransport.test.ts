@@ -109,12 +109,18 @@ describe('AC 32.6: send()', () => {
 
 describe('AC 32.10: TLS config validation', () => {
   it('rejects empty cert', async () => {
-    await expect(new RaftTcpTransport(validConfig({ tls: { cert: '', key: 'k', ca: 'c' } })).start()).rejects.toThrow(/mTLS/);
+    await expect(new RaftTcpTransport(validConfig({ tls: { cert: '', key: 'k', ca: 'c' } })).start()).rejects.toThrow(
+      /mTLS/,
+    );
   });
   it('rejects empty key', async () => {
-    await expect(new RaftTcpTransport(validConfig({ tls: { cert: 'c', key: '', ca: 'c' } })).start()).rejects.toThrow(/mTLS/);
+    await expect(new RaftTcpTransport(validConfig({ tls: { cert: 'c', key: '', ca: 'c' } })).start()).rejects.toThrow(
+      /mTLS/,
+    );
   });
   it('rejects empty ca', async () => {
-    await expect(new RaftTcpTransport(validConfig({ tls: { cert: 'c', key: 'k', ca: '' } })).start()).rejects.toThrow(/mTLS/);
+    await expect(new RaftTcpTransport(validConfig({ tls: { cert: 'c', key: 'k', ca: '' } })).start()).rejects.toThrow(
+      /mTLS/,
+    );
   });
 });

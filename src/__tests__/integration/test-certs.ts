@@ -37,9 +37,7 @@ function generateCA(): { key: forge.pki.PrivateKey; certPem: string } {
   const attrs = [{ name: 'commonName', value: 'Integration Test CA' }];
   cert.setSubject(attrs);
   cert.setIssuer(attrs);
-  cert.setExtensions([
-    { name: 'basicConstraints', cA: true, critical: true },
-  ]);
+  cert.setExtensions([{ name: 'basicConstraints', cA: true, critical: true }]);
 
   cert.sign(keys.privateKey, forge.md.sha256.create());
   return { key: keys.privateKey, certPem: pki.certificateToPem(cert) };
@@ -66,9 +64,9 @@ function generateNodeCert(caKey: forge.pki.PrivateKey, caPemCert: string, nodeNa
     {
       name: 'subjectAltName',
       altNames: [
-        { type: 2, value: nodeName },          // DNS:raft-node-N (required)
-        { type: 2, value: 'localhost' },         // DNS:localhost
-        { type: 7, value: '127.0.0.1' },         // IP:127.0.0.1
+        { type: 2, value: nodeName }, // DNS:raft-node-N (required)
+        { type: 2, value: 'localhost' }, // DNS:localhost
+        { type: 7, value: '127.0.0.1' }, // IP:127.0.0.1
       ],
     },
   ]);

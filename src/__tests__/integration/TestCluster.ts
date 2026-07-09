@@ -19,15 +19,15 @@ import * as fs from 'node:fs';
 // ── Config ────────────────────────────────────────────────────────
 
 export interface TestClusterOptions {
-  nodeCount?: number;       // default: 3
-  electionTick?: number;    // default: 15
-  heartbeatTick?: number;   // default: 3
-  tickIntervalMs?: number;  // default: 50
+  nodeCount?: number; // default: 3
+  electionTick?: number; // default: 15
+  heartbeatTick?: number; // default: 3
+  tickIntervalMs?: number; // default: 50
   leaderTimeoutMs?: number; // default: 30_000
-  pollIntervalMs?: number;  // default: 200
-  snapshotInterval?: number;// default: 100_000
-  preVote?: boolean;        // default: true
-  checkQuorum?: boolean;    // default: true
+  pollIntervalMs?: number; // default: 200
+  snapshotInterval?: number; // default: 100_000
+  preVote?: boolean; // default: true
+  checkQuorum?: boolean; // default: true
   enableInstallSnapshot?: boolean; // default: false
 }
 
@@ -101,10 +101,10 @@ export class TestCluster {
     const instances: TestNode[] = [];
     for (let i = 0; i < this.opts.nodeCount; i++) {
       const id = i + 1;
-      const nodePeers = this.peerConfigs.filter(p => p.id !== id);
+      const nodePeers = this.peerConfigs.filter((p) => p.id !== id);
       const adapter = new RaftAdapter({
         id,
-        peers: nodePeers.map(p => p.id),
+        peers: nodePeers.map((p) => p.id),
         electionTick: this.opts.electionTick,
         heartbeatTick: this.opts.heartbeatTick,
         tickIntervalMs: this.opts.tickIntervalMs,
@@ -119,7 +119,7 @@ export class TestCluster {
     }
 
     for (const inst of instances) {
-      const nodePeers = this.peerConfigs.filter(p => p.id !== inst.id);
+      const nodePeers = this.peerConfigs.filter((p) => p.id !== inst.id);
       await inst.adapter.init(() => {}, {
         node: { id: inst.id, host: '127.0.0.1', port: inst.port },
         peers: nodePeers,
@@ -143,11 +143,19 @@ export class TestCluster {
    */
   async stop(): Promise<void> {
     for (const n of this.nodes) {
-      try { n.adapter.stop(); } catch { /* ignore */ }
+      try {
+        n.adapter.stop();
+      } catch {
+        /* ignore */
+      }
     }
     this.nodes = [];
     for (const dir of this.dataDirs) {
-      try { cleanupTempDir(dir); } catch { /* ignore */ }
+      try {
+        cleanupTempDir(dir);
+      } catch {
+        /* ignore */
+      }
     }
     this.dataDirs = [];
     this.ports = [];
@@ -192,10 +200,10 @@ export class TestCluster {
    */
   async killNode(id: number): Promise<void> {
     this.requireStarted();
-    const node = this.nodes.find(n => n.id === id);
+    const node = this.nodes.find((n) => n.id === id);
     if (!node) throw new Error(`Node ${id} not found`);
     node.adapter.stop();
-    this.nodes = this.nodes.filter(n => n.id !== id);
+    this.nodes = this.nodes.filter((n) => n.id !== id);
     await this.sleep(200);
   }
 
@@ -203,7 +211,7 @@ export class TestCluster {
    * Return remaining nodes (excluding a given id).
    */
   remainingNodes(excludeId: number): TestNode[] {
-    return this.nodes.filter(n => n.id !== excludeId);
+    return this.nodes.filter((n) => n.id !== excludeId);
   }
 
   // ── Helpers ────────────────────────────────────────────────
@@ -220,6 +228,6 @@ export class TestCluster {
   }
 
   private sleep(ms: number): Promise<void> {
-    return new Promise(r => setTimeout(r, ms));
+    return new Promise((r) => setTimeout(r, ms));
   }
 }

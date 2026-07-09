@@ -12,7 +12,12 @@ export { IOnlineShardMigration, IMigrationConfig } from './interfaces/shard/IOnl
 
 // High Availability
 export { IFailoverDetector, FailoverDetectorConfig } from './interfaces/ha/IFailoverDetector';
-export { IFailoverCoordinator, FailoverAction, FailoverState, FailoverCoordinatorConfig } from './interfaces/ha/IFailoverCoordinator';
+export {
+  IFailoverCoordinator,
+  FailoverAction,
+  FailoverState,
+  FailoverCoordinatorConfig,
+} from './interfaces/ha/IFailoverCoordinator';
 export { IHAClientManager } from './interfaces/ha/IHAClientManager';
 export { IHAConsistencyVerifier, IVerificationResult } from './interfaces/ha/IHAConsistencyVerifier';
 export { IFencingManager } from './interfaces/ha/IFencingManager';

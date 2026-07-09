@@ -144,7 +144,7 @@ export class RaftAdapter {
    *                           per-shard message routing in single-process multi-RaftGroup mode.
    */
   async init(
-    applyHandler?: ((data: string, index?: number, term?: number) => void),
+    applyHandler?: (data: string, index?: number, term?: number) => void,
     tcpConfig?: RaftTcpTransportConfig,
     sharedTransport?: SharedTransport | { transport: SharedTransport; shardId: number },
   ): Promise<void> {
@@ -206,11 +206,7 @@ export class RaftAdapter {
           shardId = this.config.id;
         }
         const { SharedBatchedTransport } = await import('../transport/SharedBatchedTransport');
-        raftTransport = new SharedBatchedTransport(
-          st,
-          shardId,
-          String(this.config.id),
-        );
+        raftTransport = new SharedBatchedTransport(st, shardId, String(this.config.id));
       } else if (tcpConfig) {
         // TCP + mTLS — BatchedRaftTransport wraps the single RaftTcpTransport instance
         raftTransport = new BatchedRaftTransport({
@@ -276,11 +272,11 @@ export class RaftAdapter {
       // the transport layer handles peer routing, so use empty peer list.
       const peerIds = this.config.peers || [];
       const peers = peerIds
-        .filter(p => p !== this.config.id)
-        .map(p => ({
+        .filter((p) => p !== this.config.id)
+        .map((p) => ({
           id: String(p),
           address: tcpConfig
-            ? `${tcpConfig.peers.find(pc => pc.id === p)?.host || '127.0.0.1'}:${tcpConfig.peers.find(pc => pc.id === p)?.port || 0}`
+            ? `${tcpConfig.peers.find((pc) => pc.id === p)?.host || '127.0.0.1'}:${tcpConfig.peers.find((pc) => pc.id === p)?.port || 0}`
             : `node-${p}:0`,
         }));
 
@@ -348,10 +344,7 @@ export class RaftAdapter {
         }
         return { index: '0', term: '0' };
       } catch (applyErr: any) {
-        throw new SqlVecError(
-          `Force propose apply failed: ${applyErr.message}`,
-          SqlVecErrorCode.INTERNAL_ERROR,
-        );
+        throw new SqlVecError(`Force propose apply failed: ${applyErr.message}`, SqlVecErrorCode.INTERNAL_ERROR);
       }
     }
 
@@ -381,10 +374,7 @@ export class RaftAdapter {
       };
     } catch (err: any) {
       if (err instanceof SqlVecError) throw err;
-      throw new SqlVecError(
-        `Raft propose failed: ${err.message}`,
-        SqlVecErrorCode.INTERNAL_ERROR,
-      );
+      throw new SqlVecError(`Raft propose failed: ${err.message}`, SqlVecErrorCode.INTERNAL_ERROR);
     }
   }
 
@@ -433,10 +423,7 @@ export class RaftAdapter {
       }
     } catch (err: any) {
       if (err instanceof SqlVecError) throw err;
-      throw new SqlVecError(
-        `Raft propose failed: ${err.message}`,
-        SqlVecErrorCode.INTERNAL_ERROR,
-      );
+      throw new SqlVecError(`Raft propose failed: ${err.message}`, SqlVecErrorCode.INTERNAL_ERROR);
     }
   }
 
@@ -484,10 +471,10 @@ export class RaftAdapter {
       const leader = await this.getLeader();
       if (leader !== null && leader !== selfNodeId) {
         // Wait briefly for the new leader to be ready
-        await new Promise(r => setTimeout(r, 500));
+        await new Promise((r) => setTimeout(r, 500));
         return;
       }
-      await new Promise(resolve => setTimeout(resolve, pollIntervalMs));
+      await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
     }
 
     throw new Error(
@@ -539,10 +526,7 @@ export class RaftAdapter {
    */
   setForceLeader(enabled: boolean): void {
     this._forceLeader = enabled;
-    logger.warn(
-      { nodeId: this.config.id, enabled },
-      `[RaftAdapter] Force leader ${enabled ? 'ENABLED' : 'DISABLED'}`,
-    );
+    logger.warn({ nodeId: this.config.id, enabled }, `[RaftAdapter] Force leader ${enabled ? 'ENABLED' : 'DISABLED'}`);
   }
 
   /**
@@ -727,14 +711,19 @@ export class RaftAdapter {
       return;
     }
     if (typeof storage.compactLogs !== 'function') {
-      logger.warn(`[RaftAdapter] Storage does not support compactLogs() — logs will not be truncated (index ${lastIncludedIndex})`);
+      logger.warn(
+        `[RaftAdapter] Storage does not support compactLogs() — logs will not be truncated (index ${lastIncludedIndex})`,
+      );
       return;
     }
     try {
       await storage.compactLogs(lastIncludedIndex);
       logger.info(`[RaftAdapter] Logs compacted at index ${lastIncludedIndex}`);
     } catch (err: any) {
-      logger.warn({ err }, `[RaftAdapter] Log compaction failed at index ${lastIncludedIndex}: ${err.message} — continuing`);
+      logger.warn(
+        { err },
+        `[RaftAdapter] Log compaction failed at index ${lastIncludedIndex}: ${err.message} — continuing`,
+      );
     }
   }
 

@@ -42,7 +42,6 @@ import pino from 'pino';
 const logger = pino({ level: process.env.LOG_LEVEL || 'info' });
 import { IPITRHook } from '../../interfaces/IPITRHook';
 
-
 // ──────────────────────────────────────────
 //  Types
 // ──────────────────────────────────────────
@@ -153,10 +152,7 @@ export class RaftGroup {
     this.tmpDir = path.dirname(this.snapshotFileName);
     this.snapshotDirForLearners = this.snapshotDir;
     this.pipelineConfig = pipelineConfig || { ...DEFAULT_PIPELINE_CONFIG };
-    this.flexQuorum = resolveFlexibleQuorumConfig(
-      flexQuorumConfig,
-      raftConfig.peers.length,
-    );
+    this.flexQuorum = resolveFlexibleQuorumConfig(flexQuorumConfig, raftConfig.peers.length);
     this.pitrHook = pitrHook;
     this.pitrFlushHook = pitrFlushHook;
   }
@@ -262,18 +258,12 @@ export class RaftGroup {
 
     // Initialize InstallSnapshotHandler if enabled in config
     if ((this.raft as any).config?.enableInstallSnapshot) {
-      this.installSnapshotHandler = new InstallSnapshotHandler(
-        this.snapshotDir,
-        this.nodeId,
-        {
-          chunkSize: 8 * 1024 * 1024,
-          enableChecksum: true,
-          assemblyTimeoutMs: 300_000,
-        },
-      );
-      logger.info(
-        `[RaftGroup] InstallSnapshotHandler enabled for shard ${this.shardId}`,
-      );
+      this.installSnapshotHandler = new InstallSnapshotHandler(this.snapshotDir, this.nodeId, {
+        chunkSize: 8 * 1024 * 1024,
+        enableChecksum: true,
+        assemblyTimeoutMs: 300_000,
+      });
+      logger.info(`[RaftGroup] InstallSnapshotHandler enabled for shard ${this.shardId}`);
     }
   }
 
@@ -311,8 +301,7 @@ export class RaftGroup {
    * Check if a joint consensus transition is in progress.
    */
   isJointConsensusActive(): boolean {
-    return this._transitionalConfig !== null &&
-           this._transitionalConfig.newEntryIndex === 0;
+    return this._transitionalConfig !== null && this._transitionalConfig.newEntryIndex === 0;
   }
 
   /**
@@ -365,8 +354,8 @@ export class RaftGroup {
    */
   isJointQuorumSatisfied(acknowledgedPeerIds: Set<number>): boolean {
     const { oldMajority, newMajority } = this.getJointQuorumRequired();
-    const oldAcks = this._transitionalConfig!.oldPeers!.filter(p => acknowledgedPeerIds.has(p)).length;
-    const newAcks = this._transitionalConfig!.newPeers!.filter(p => acknowledgedPeerIds.has(p)).length;
+    const oldAcks = this._transitionalConfig!.oldPeers!.filter((p) => acknowledgedPeerIds.has(p)).length;
+    const newAcks = this._transitionalConfig!.newPeers!.filter((p) => acknowledgedPeerIds.has(p)).length;
     return oldAcks >= oldMajority && newAcks >= newMajority;
   }
 
@@ -462,7 +451,7 @@ export class RaftGroup {
           if (Date.now() - this._transitionalConfig!.startedAt! > timeoutMs) {
             logger.warn(
               `[RaftGroup] C_JOINT timeout after ${Date.now() - this._transitionalConfig!.startedAt!}ms. ` +
-              `Rolling back membership change (commit=${progress?.commit ?? '?'}, jointIdx=${jointIndex}).`,
+                `Rolling back membership change (commit=${progress?.commit ?? '?'}, jointIdx=${jointIndex}).`,
             );
             break;
           }
@@ -471,9 +460,9 @@ export class RaftGroup {
           const delay = Math.min(200 * Math.pow(2, attempt), 5000);
           logger.debug(
             `[RaftGroup] C_JOINT not yet committed in both configs (attempt ${attempt + 1}/${maxRetries}). ` +
-            `Retrying in ${delay}ms.`,
+              `Retrying in ${delay}ms.`,
           );
-          await new Promise(resolve => setTimeout(resolve, delay));
+          await new Promise((resolve) => setTimeout(resolve, delay));
         }
 
         if (committed) {
@@ -535,7 +524,7 @@ export class RaftGroup {
     } catch (err: any) {
       logger.error(
         `[RaftGroup] C_NEW transition failed: ${err.message}. ` +
-        `C_JOINT entry at index ${jointIndex} already committed. Manual recovery may be needed.`,
+          `C_JOINT entry at index ${jointIndex} already committed. Manual recovery may be needed.`,
       );
       // Even if C_NEW fails, we keep transitional config so that
       // the system can retry the transition later.
@@ -616,9 +605,7 @@ export class RaftGroup {
       }
     }
 
-    logger.info(
-      `[RaftGroup] Learner ${nodeId} added to shard ${this.shardId} at index ${info.nextIndex}`,
-    );
+    logger.info(`[RaftGroup] Learner ${nodeId} added to shard ${this.shardId} at index ${info.nextIndex}`);
 
     return true;
   }
@@ -732,7 +719,7 @@ export class RaftGroup {
       for (let i = 0; i < 30; i++) {
         newLeader = await this.raft.getLeader();
         if (newLeader !== null && newLeader !== this.nodeId) break;
-        await new Promise(resolve => setTimeout(resolve, 200));
+        await new Promise((resolve) => setTimeout(resolve, 200));
       }
 
       this.leaderTransferInProgress = false;
@@ -795,7 +782,7 @@ export class RaftGroup {
       for (let i = 0; i < 30; i++) {
         newLeader = await this.raft.getLeader();
         if (newLeader !== null && newLeader !== this.nodeId) break;
-        await new Promise(resolve => setTimeout(resolve, 200));
+        await new Promise((resolve) => setTimeout(resolve, 200));
       }
 
       const durationMs = Date.now() - startTime;
@@ -862,7 +849,8 @@ export class RaftGroup {
    */
   setPipelineConfig(config: Partial<PipelineConfig>): void {
     if (config.batchSize !== undefined) this.pipelineConfig.batchSize = Math.max(1, config.batchSize);
-    if (config.batchIntervalMs !== undefined) this.pipelineConfig.batchIntervalMs = Math.max(10, config.batchIntervalMs);
+    if (config.batchIntervalMs !== undefined)
+      this.pipelineConfig.batchIntervalMs = Math.max(10, config.batchIntervalMs);
 
     // Restart flush timer with new interval
     this.restartPipelineFlushTimer();
@@ -876,7 +864,7 @@ export class RaftGroup {
       clearInterval(this.pipelineFlushTimer);
     }
     this.pipelineFlushTimer = setInterval(() => {
-      this.flushPipeline().catch(err => {
+      this.flushPipeline().catch((err) => {
         logger.error(`[RaftGroup] Pipeline flush error: ${err.message}`);
       });
     }, this.pipelineConfig.batchIntervalMs);
@@ -958,11 +946,11 @@ export class RaftGroup {
     if (this.pipeline.length === 0) return;
 
     const pendingEntries = [...this.pipeline];
-    const unflushed = pendingEntries.filter(e => !e.flushed);
+    const unflushed = pendingEntries.filter((e) => !e.flushed);
 
     if (unflushed.length === 0) {
       // All entries are flushed but unacknowledged — clear if acknowledged
-      this.pipeline = this.pipeline.filter(e => !e.acknowledged);
+      this.pipeline = this.pipeline.filter((e) => !e.acknowledged);
       return;
     }
 
@@ -1001,12 +989,10 @@ export class RaftGroup {
     }
 
     // Clean up acknowledged entries
-    this.pipeline = this.pipeline.filter(e => !e.acknowledged);
+    this.pipeline = this.pipeline.filter((e) => !e.acknowledged);
 
     if (successCount > 0) {
-      logger.info(
-        `[RaftGroup] Pipeline flush: ${successCount}/${unflushed.length} entries committed`,
-      );
+      logger.info(`[RaftGroup] Pipeline flush: ${successCount}/${unflushed.length} entries committed`);
     }
   }
 
@@ -1060,13 +1046,9 @@ export class RaftGroup {
       // warning, not thrown), so this is safe in the outer catch block.
       await this.raft.compactLogs(meta.lastIncludedIndex);
 
-      logger.info(
-        `[RaftGroup] Snapshot taken at index ${appliedIndex} (term ${term}, shard ${this.shardId})`,
-      );
+      logger.info(`[RaftGroup] Snapshot taken at index ${appliedIndex} (term ${term}, shard ${this.shardId})`);
     } catch (err: any) {
-      logger.error(
-        `[RaftGroup] Snapshot failed (shard ${this.shardId}): ${err.message}`,
-      );
+      logger.error(`[RaftGroup] Snapshot failed (shard ${this.shardId}): ${err.message}`);
     }
   }
 
@@ -1076,9 +1058,7 @@ export class RaftGroup {
     const progress = await this.raft.getProgress();
     const logSize = progress.lastLog - progress.applied;
     if (logSize > this.maxLogEntries) {
-      logger.warn(
-        `[RaftGroup] Log size ${logSize} exceeds limit ${this.maxLogEntries}, forcing snapshot`,
-      );
+      logger.warn(`[RaftGroup] Log size ${logSize} exceeds limit ${this.maxLogEntries}, forcing snapshot`);
       this.raft.resetCommittedCount();
       await this.trySnapshot();
     }
@@ -1182,7 +1162,8 @@ export class RaftGroup {
   }
 
   proposeAsync(entry: ApplyEntry): void {
-    this.raft.propose(JSON.stringify(entry))
+    this.raft
+      .propose(JSON.stringify(entry))
       .then((committed) => {
         (this.outboxManager as any).append({
           msgId: entry.msgId,
@@ -1198,7 +1179,7 @@ export class RaftGroup {
       .catch((err: any) => {
         logger.error(
           `[RaftGroup] Async propose failed (shard ${this.shardId}): ${err.message} ` +
-          `| entry msgId=${entry.msgId}, type=${entry.type}`,
+            `| entry msgId=${entry.msgId}, type=${entry.type}`,
         );
         // M-05: Trigger health check callback on severe failure
         // (e.g., persistent disk full or Raft node crash)
@@ -1247,16 +1228,9 @@ export class RaftGroup {
     // instead of forwarding to the RaftNode. The handler
     // assembles chunks, verifies checksums, persists the snapshot,
     // and calls back when the full snapshot is ready.
-    if (
-      msg &&
-      msg.msgType === 14 &&
-      msg.snapshot &&
-      this.installSnapshotHandler
-    ) {
+    if (msg && msg.msgType === 14 && msg.snapshot && this.installSnapshotHandler) {
       this._handleInstallSnapshot(msg).catch((err: any) => {
-        logger.error(
-          `[RaftGroup] InstallSnapshot error (shard ${this.shardId}): ${err.message}`,
-        );
+        logger.error(`[RaftGroup] InstallSnapshot error (shard ${this.shardId}): ${err.message}`);
       });
       return;
     }
@@ -1280,34 +1254,30 @@ export class RaftGroup {
 
     const handler = this.installSnapshotHandler!;
 
-    const response = await handler.handleChunk(
-      req,
-      this.raft,
-      async (snapshotData: Buffer, meta: SnapshotMeta) => {
-        logger.info(
-          `[RaftGroup] Snapshot assembled at index ${meta.lastIncludedIndex} ` +
+    const response = await handler.handleChunk(req, this.raft, async (snapshotData: Buffer, meta: SnapshotMeta) => {
+      logger.info(
+        `[RaftGroup] Snapshot assembled at index ${meta.lastIncludedIndex} ` +
           `(term ${meta.lastIncludedTerm}, ${snapshotData.length} bytes)`,
-        );
+      );
 
-        // Forward the assembled snapshot to the RaftNode so it can
-        // update its log compaction state (last applied, committed, etc.)
-        await this.raft.step({
-          msgType: 14,
-          from: req.leaderId,
-          to: String(this.nodeId),
+      // Forward the assembled snapshot to the RaftNode so it can
+      // update its log compaction state (last applied, committed, etc.)
+      await this.raft.step({
+        msgType: 14,
+        from: req.leaderId,
+        to: String(this.nodeId),
+        term: req.term,
+        snapshot: {
           term: req.term,
-          snapshot: {
-            term: req.term,
-            leaderId: req.leaderId,
-            lastIncludedIndex: String(meta.lastIncludedIndex),
-            lastIncludedTerm: String(meta.lastIncludedTerm),
-            offset: req.offset,
-            data: new Uint8Array(snapshotData),
-            done: true,
-          },
-        });
-      },
-    );
+          leaderId: req.leaderId,
+          lastIncludedIndex: String(meta.lastIncludedIndex),
+          lastIncludedTerm: String(meta.lastIncludedTerm),
+          offset: req.offset,
+          data: new Uint8Array(snapshotData),
+          done: true,
+        },
+      });
+    });
 
     // Send response back to leader if this is NOT the final chunk
     // (final chunk response is handled inside the callback via raft.step)
@@ -1503,7 +1473,7 @@ export class RaftGroup {
             } else {
               logger.warn(
                 `[RaftGroup] Rejecting stale heartbeat from term ${term} ` +
-                `(last known: ${this._lastFencingTerm}). Leader ${leaderId} may be stale.`,
+                  `(last known: ${this._lastFencingTerm}). Leader ${leaderId} may be stale.`,
               );
             }
           }
@@ -1520,8 +1490,8 @@ export class RaftGroup {
         if (Date.now() - this._leaderHeartbeatTs > failoverTimeoutMs) {
           logger.warn(
             `[RaftGroup] Leader heartbeat timeout (shard ${this.shardId}, ` +
-            `missed ${Date.now() - this._leaderHeartbeatTs}ms, ` +
-            `timeout ${failoverTimeoutMs}ms). Triggering campaign.`,
+              `missed ${Date.now() - this._leaderHeartbeatTs}ms, ` +
+              `timeout ${failoverTimeoutMs}ms). Triggering campaign.`,
           );
 
           // Use the underlying RaftNode.campaign() to start election
@@ -1634,7 +1604,7 @@ export class RaftGroup {
     if (removedCount > 0) {
       logger.debug(
         `[RaftGroup] Cleaned up ${removedCount} stale active peers ` +
-        `(threshold: ${staleThresholdMs}ms, remaining: ${this._activePeers.size})`,
+          `(threshold: ${staleThresholdMs}ms, remaining: ${this._activePeers.size})`,
       );
     }
   }
@@ -1685,7 +1655,7 @@ export class RaftGroup {
     this._fencingState = 'minority';
     logger.warn(
       `[RaftGroup] Entering read-only mode (shard ${this.shardId}). ` +
-      `Minority partition detected. Writes will be rejected.`,
+        `Minority partition detected. Writes will be rejected.`,
     );
 
     // If we're the leader, step down to avoid split-brain
@@ -1740,7 +1710,7 @@ export class RaftGroup {
     if (!inMajority) {
       logger.warn(
         `[RaftGroup] Fencing check FAILED (shard ${this.shardId}). ` +
-        `Active peers: ${this._activePeers.size}, total peers in config.`,
+          `Active peers: ${this._activePeers.size}, total peers in config.`,
       );
 
       // Step down and enter read-only
@@ -1754,8 +1724,7 @@ export class RaftGroup {
     this._fencingState = 'normal';
 
     logger.debug(
-      `[RaftGroup] Fencing check PASSED (shard ${this.shardId}). ` +
-      `Active peers: ${this._activePeers.size}`,
+      `[RaftGroup] Fencing check PASSED (shard ${this.shardId}). ` + `Active peers: ${this._activePeers.size}`,
     );
 
     return true;

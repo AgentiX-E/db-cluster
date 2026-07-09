@@ -68,7 +68,7 @@ async function main() {
       // In-memory mode (fastest, no TLS, no disk)
       raftAdapter = new RaftAdapter({
         id: nodeConfig.id,
-        peers: nodeConfig.peers.map(p => p.id),
+        peers: nodeConfig.peers.map((p) => p.id),
         electionTick: clusterConfig.electionTick,
         heartbeatTick: clusterConfig.heartbeatTick,
         tickIntervalMs: 50,
@@ -84,7 +84,7 @@ async function main() {
       // TCP + mTLS mode
       raftAdapter = new RaftAdapter({
         id: nodeConfig.id,
-        peers: nodeConfig.peers.map(p => p.id),
+        peers: nodeConfig.peers.map((p) => p.id),
         electionTick: clusterConfig.electionTick,
         heartbeatTick: clusterConfig.heartbeatTick,
         tickIntervalMs: 50,
@@ -223,7 +223,6 @@ async function main() {
       process.send?.({ type: 'exited', nodeId: nodeConfig.id, timestamp: Date.now() });
       process.exit(0);
     });
-
   } catch (err: any) {
     process.send?.({
       type: 'error',

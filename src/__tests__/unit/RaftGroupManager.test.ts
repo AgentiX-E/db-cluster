@@ -166,12 +166,7 @@ describe('RaftGroupManager', () => {
 
     it('should register multiple shards independently', () => {
       for (let i = 0; i < 3; i++) {
-        manager.registerShardWithReplica(
-          i,
-          new MockReplica(i),
-          [{ nodeId: 'node-1', raftIndex: 1 }],
-          1,
-        );
+        manager.registerShardWithReplica(i, new MockReplica(i), [{ nodeId: 'node-1', raftIndex: 1 }], 1);
       }
 
       expect(mockGroups.size).toBe(3);
@@ -184,12 +179,7 @@ describe('RaftGroupManager', () => {
   // ── AC 6.2: Deregister shard ───────────────────────────────
   describe('deregisterShard', () => {
     it('should stop the RaftGroup and remove it from internal tracking (AC 6.2)', () => {
-      manager.registerShardWithReplica(
-        1,
-        new MockReplica(1),
-        [{ nodeId: 'node-1', raftIndex: 1 }],
-        1,
-      );
+      manager.registerShardWithReplica(1, new MockReplica(1), [{ nodeId: 'node-1', raftIndex: 1 }], 1);
 
       const group = mockGroups.get(1);
       expect(group._stopped).toBe(false);
@@ -212,7 +202,10 @@ describe('RaftGroupManager', () => {
       manager.registerShardWithReplica(
         1,
         new MockReplica(1),
-        [{ nodeId: 'node-1', raftIndex: 1 }, { nodeId: 'node-2', raftIndex: 2 }],
+        [
+          { nodeId: 'node-1', raftIndex: 1 },
+          { nodeId: 'node-2', raftIndex: 2 },
+        ],
         1,
       );
 
@@ -227,7 +220,10 @@ describe('RaftGroupManager', () => {
       manager.registerShardWithReplica(
         1,
         new MockReplica(1),
-        [{ nodeId: 'node-1', raftIndex: 1 }, { nodeId: 'node-2', raftIndex: 2 }],
+        [
+          { nodeId: 'node-1', raftIndex: 1 },
+          { nodeId: 'node-2', raftIndex: 2 },
+        ],
         1,
       );
 
@@ -240,12 +236,7 @@ describe('RaftGroupManager', () => {
   // ── AC 6.5: propose dispatch ───────────────────────────────
   describe('propose', () => {
     it('should dispatch to the correct RaftGroup (AC 6.5)', async () => {
-      manager.registerShardWithReplica(
-        1,
-        new MockReplica(1),
-        [{ nodeId: 'node-1', raftIndex: 1 }],
-        1,
-      );
+      manager.registerShardWithReplica(1, new MockReplica(1), [{ nodeId: 'node-1', raftIndex: 1 }], 1);
 
       const group = mockGroups.get(1);
       group._leader = 1; // This node is leader for this shard
@@ -264,12 +255,7 @@ describe('RaftGroupManager', () => {
   // ── AC 6.7: Pause/resume ──────────────────────────────────
   describe('pause/resume shard', () => {
     it('should pause and resume a shard (AC 6.7)', async () => {
-      manager.registerShardWithReplica(
-        1,
-        new MockReplica(1),
-        [{ nodeId: 'node-1', raftIndex: 1 }],
-        1,
-      );
+      manager.registerShardWithReplica(1, new MockReplica(1), [{ nodeId: 'node-1', raftIndex: 1 }], 1);
 
       const group = mockGroups.get(1);
       expect(group._stopped).toBe(false);
@@ -295,12 +281,7 @@ describe('RaftGroupManager', () => {
   // ── AC 6.6: Batch propose ─────────────────────────────────
   describe('batch propose', () => {
     it('should buffer batchable entries (AC 6.6)', async () => {
-      manager.registerShardWithReplica(
-        1,
-        new MockReplica(1),
-        [{ nodeId: 'node-1', raftIndex: 1 }],
-        1,
-      );
+      manager.registerShardWithReplica(1, new MockReplica(1), [{ nodeId: 'node-1', raftIndex: 1 }], 1);
 
       const group = mockGroups.get(1);
       group._leader = 1; // This node is leader
@@ -318,12 +299,7 @@ describe('RaftGroupManager', () => {
   describe('status', () => {
     it('should return peer status for all registered groups (AC 6.8)', () => {
       for (let i = 0; i < 2; i++) {
-        manager.registerShardWithReplica(
-          i,
-          new MockReplica(i),
-          [{ nodeId: 'node-1', raftIndex: 1 }],
-          1,
-        );
+        manager.registerShardWithReplica(i, new MockReplica(i), [{ nodeId: 'node-1', raftIndex: 1 }], 1);
       }
 
       const statuses = manager.getPeerStatus();
@@ -454,8 +430,16 @@ describe('RaftGroupManager', () => {
     beforeEach(() => {
       const replica1 = new MockReplica(601);
       const replica2 = new MockReplica(602);
-      manager.registerShard('601', { replica: replica1, peers: [{ nodeId: 'node-1', raftIndex: 601 }], localRaftIndex: 601 });
-      manager.registerShard('602', { replica: replica2, peers: [{ nodeId: 'node-1', raftIndex: 602 }], localRaftIndex: 602 });
+      manager.registerShard('601', {
+        replica: replica1,
+        peers: [{ nodeId: 'node-1', raftIndex: 601 }],
+        localRaftIndex: 601,
+      });
+      manager.registerShard('602', {
+        replica: replica2,
+        peers: [{ nodeId: 'node-1', raftIndex: 602 }],
+        localRaftIndex: 602,
+      });
     });
 
     it('should propose membership change for all registered groups', async () => {
@@ -500,8 +484,16 @@ describe('RaftGroupManager', () => {
     beforeEach(() => {
       const replica1 = new MockReplica(701);
       const replica2 = new MockReplica(702);
-      manager.registerShard('701', { replica: replica1, peers: [{ nodeId: 'node-1', raftIndex: 701 }], localRaftIndex: 701 });
-      manager.registerShard('702', { replica: replica2, peers: [{ nodeId: 'node-1', raftIndex: 702 }], localRaftIndex: 702 });
+      manager.registerShard('701', {
+        replica: replica1,
+        peers: [{ nodeId: 'node-1', raftIndex: 701 }],
+        localRaftIndex: 701,
+      });
+      manager.registerShard('702', {
+        replica: replica2,
+        peers: [{ nodeId: 'node-1', raftIndex: 702 }],
+        localRaftIndex: 702,
+      });
       mockGroups.get(701)!._leader = 701;
       mockGroups.get(702)!._leader = 3;
     });
@@ -510,8 +502,8 @@ describe('RaftGroupManager', () => {
       const status = await manager.getHealthStatus();
 
       expect(status).toHaveLength(2);
-      const s701 = status.find(s => s.shardId === '701' || s.shardId === 701);
-      const s702 = status.find(s => s.shardId === '702' || s.shardId === 702);
+      const s701 = status.find((s) => s.shardId === '701' || s.shardId === 701);
+      const s702 = status.find((s) => s.shardId === '702' || s.shardId === 702);
       expect(s701).toBeDefined();
       expect(s702).toBeDefined();
     });
@@ -544,8 +536,16 @@ describe('RaftGroupManager', () => {
     beforeEach(() => {
       const replica1 = new MockReplica(901);
       const replica2 = new MockReplica(902);
-      manager.registerShard('901', { replica: replica1, peers: [{ nodeId: 'node-1', raftIndex: 901 }], localRaftIndex: 901 });
-      manager.registerShard('902', { replica: replica2, peers: [{ nodeId: 'node-1', raftIndex: 902 }], localRaftIndex: 902 });
+      manager.registerShard('901', {
+        replica: replica1,
+        peers: [{ nodeId: 'node-1', raftIndex: 901 }],
+        localRaftIndex: 901,
+      });
+      manager.registerShard('902', {
+        replica: replica2,
+        peers: [{ nodeId: 'node-1', raftIndex: 902 }],
+        localRaftIndex: 902,
+      });
     });
 
     it('should set force leader on all groups', async () => {

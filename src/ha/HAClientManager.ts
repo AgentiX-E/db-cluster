@@ -76,10 +76,7 @@ export class HAClientManager {
     }
     shardSet.add(clientId);
 
-    this.logger.debug(
-      { clientId, shardId },
-      'Client registered for HA failover tracking',
-    );
+    this.logger.debug({ clientId, shardId }, 'Client registered for HA failover tracking');
   }
 
   /**
@@ -105,17 +102,10 @@ export class HAClientManager {
    * In a real implementation, this would send notifications via the
    * protocol layer (e.g., PG Wire error messages, connection redirect).
    */
-  onLeaderChange(
-    shardId: string,
-    newLeaderId: string,
-    newLeaderAddr: string,
-  ): void {
+  onLeaderChange(shardId: string, newLeaderId: string, newLeaderAddr: string): void {
     const shardSet = this.shardClients.get(shardId);
     if (!shardSet || shardSet.size === 0) {
-      this.logger.debug(
-        { shardId, newLeaderId },
-        'No clients to notify for shard leader change',
-      );
+      this.logger.debug({ shardId, newLeaderId }, 'No clients to notify for shard leader change');
       return;
     }
 
@@ -135,10 +125,7 @@ export class HAClientManager {
     // 2. Include the new leader address for automatic reconnection
     // 3. Or, update a shared DNS/proxy routing table
     for (const clientId of clientList) {
-      this.logger.info(
-        { clientId, shardId, newLeaderId, newLeaderAddr },
-        'Client should reconnect to new leader',
-      );
+      this.logger.info({ clientId, shardId, newLeaderId, newLeaderAddr }, 'Client should reconnect to new leader');
     }
   }
 

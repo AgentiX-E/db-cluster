@@ -136,20 +136,18 @@ export class RaftTcpTransport extends EventEmitter {
     const tlsConfig = this.config.tls;
     if (!tlsConfig.cert || (typeof tlsConfig.cert === 'string' && tlsConfig.cert.trim().length === 0)) {
       throw new Error(
-        '[RaftTcpTransport] mTLS is REQUIRED for TCP transport. ' +
-        'Provide a valid `tls.cert` (PEM certificate).'
+        '[RaftTcpTransport] mTLS is REQUIRED for TCP transport. ' + 'Provide a valid `tls.cert` (PEM certificate).',
       );
     }
     if (!tlsConfig.key || (typeof tlsConfig.key === 'string' && tlsConfig.key.trim().length === 0)) {
       throw new Error(
-        '[RaftTcpTransport] mTLS is REQUIRED for TCP transport. ' +
-        'Provide a valid `tls.key` (PEM private key).'
+        '[RaftTcpTransport] mTLS is REQUIRED for TCP transport. ' + 'Provide a valid `tls.key` (PEM private key).',
       );
     }
     if (!tlsConfig.ca || (typeof tlsConfig.ca === 'string' && tlsConfig.ca.trim().length === 0)) {
       throw new Error(
         '[RaftTcpTransport] mTLS is REQUIRED for TCP transport. ' +
-        'Provide a valid `tls.ca` (PEM CA certificate for peer verification).'
+          'Provide a valid `tls.ca` (PEM CA certificate for peer verification).',
       );
     }
 
@@ -175,18 +173,14 @@ export class RaftTcpTransport extends EventEmitter {
     });
 
     await new Promise<void>((resolve, reject) => {
-      this.server!.listen(
-        this.config.node.port,
-        this.config.node.host,
-        () => {
-          // Update config with actual bound port (important when port=0 auto-assign)
-          const addr = this.server!.address();
-          if (addr && typeof addr === 'object') {
-            this.config.node.port = addr.port;
-          }
-          resolve();
-        },
-      );
+      this.server!.listen(this.config.node.port, this.config.node.host, () => {
+        // Update config with actual bound port (important when port=0 auto-assign)
+        const addr = this.server!.address();
+        if (addr && typeof addr === 'object') {
+          this.config.node.port = addr.port;
+        }
+        resolve();
+      });
       this.server!.once('error', reject);
     });
 
@@ -448,7 +442,10 @@ export class RaftTcpTransport extends EventEmitter {
     };
 
     if (this._compressionEnabled) {
-      this._compressor.compress(payload).then(sendIt).catch(() => sendIt(payload));
+      this._compressor
+        .compress(payload)
+        .then(sendIt)
+        .catch(() => sendIt(payload));
     } else {
       sendIt(payload);
     }
@@ -520,9 +517,7 @@ export class RaftTcpTransport extends EventEmitter {
 
     const cn = Array.isArray(cert.subject.CN) ? cert.subject.CN[0] : cert.subject.CN;
     const verifyOpts = this.config.tls.verify || {};
-    const cnPrefixes = verifyOpts.allowedCNPrefixes?.length
-      ? verifyOpts.allowedCNPrefixes
-      : [`raft-node-`];
+    const cnPrefixes = verifyOpts.allowedCNPrefixes?.length ? verifyOpts.allowedCNPrefixes : [`raft-node-`];
 
     let peerId: number | null = null;
     for (const prefix of cnPrefixes) {

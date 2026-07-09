@@ -85,11 +85,7 @@ export class HAFailoverCoordinator {
   ) {
     this.consensusLayer = consensusLayer;
     this.clusterTopology = clusterTopology;
-    this.detector = new HAFailoverDetector(
-      detectorConfig ?? {},
-      clusterTopology,
-      consensusLayer,
-    );
+    this.detector = new HAFailoverDetector(detectorConfig ?? {}, clusterTopology, consensusLayer);
     this.consistencyVerifier = consistencyVerifier ?? new HAConsistencyVerifier(consensusLayer);
     this.clientManager = clientManager ?? new HAClientManager();
     this.clockCompensator = clockCompensator ?? new ClockCompensator();
@@ -141,10 +137,7 @@ export class HAFailoverCoordinator {
       // Stage 1: Verify the failure
       const failureConfirmed = await this.verifyFailure(event);
       if (!failureConfirmed) {
-        logger.info(
-          { event },
-          'Failure not confirmed after double-check — aborting failover',
-        );
+        logger.info({ event }, 'Failure not confirmed after double-check — aborting failover');
         this.activeFailovers--;
         return false;
       }
@@ -155,10 +148,7 @@ export class HAFailoverCoordinator {
       const shouldTakeOver = await this.shouldTakeOver(event, localNodeId);
 
       if (!shouldTakeOver) {
-        logger.info(
-          { event, localNodeId },
-          'Local node should not take over for this shard — skipping',
-        );
+        logger.info({ event, localNodeId }, 'Local node should not take over for this shard — skipping');
         // Still update topology — mark the affected node as unhealthy
         this.unhealthyNodes.add(event.affectedNodeId);
         this.activeFailovers--;
@@ -166,10 +156,7 @@ export class HAFailoverCoordinator {
       }
 
       // Stage 3: Fence the failed node (STONITH) so it can't write before election
-      logger.info(
-        { affectedNodeId: event.affectedNodeId },
-        'Fencing failed node before triggering election',
-      );
+      logger.info({ affectedNodeId: event.affectedNodeId }, 'Fencing failed node before triggering election');
       this.fencingManager?.fenceNode(event.affectedNodeId);
 
       // Stage 4: Trigger leader election (for raft, election is automatic,
@@ -177,10 +164,7 @@ export class HAFailoverCoordinator {
       const leaderResult = await this.triggerElection(event, localNodeId);
 
       if (!leaderResult) {
-        logger.warn(
-          { shardId: event.shardId },
-          'Failed to trigger leader election',
-        );
+        logger.warn({ shardId: event.shardId }, 'Failed to trigger leader election');
         this.activeFailovers--;
         return false;
       }
@@ -195,10 +179,7 @@ export class HAFailoverCoordinator {
       };
 
       await this.consensusLayer.notifyTopologyChange(topologyChange);
-      logger.info(
-        { shardId: event.shardId, newLeaderId },
-        'Topology updated with new leader',
-      );
+      logger.info({ shardId: event.shardId, newLeaderId }, 'Topology updated with new leader');
 
       // Stage 6: Raft group reconfiguration
       if (event.type === 'node_failure' || event.type === 'leader_failure') {
@@ -228,10 +209,7 @@ export class HAFailoverCoordinator {
             'Consistency check failed after failover — data may be divergent',
           );
         } else {
-          logger.info(
-            { shardId: event.shardId },
-            'Consistency verified after failover',
-          );
+          logger.info({ shardId: event.shardId }, 'Consistency verified after failover');
         }
       } catch (err) {
         // verifyNewLeaderConsistency throws descriptive Error for real consistency failures
@@ -244,11 +222,7 @@ export class HAFailoverCoordinator {
       // Stage 8: Notify client manager of leader change
       const peerIds = this.clusterTopology.getPeerIds();
       const leaderAddr = peerIds[0] ?? 'unknown'; // Best-effort address resolution
-      this.clientManager.onLeaderChange(
-        event.shardId,
-        newLeaderId,
-        leaderAddr,
-      );
+      this.clientManager.onLeaderChange(event.shardId, newLeaderId, leaderAddr);
 
       // Update HA status
       this.totalFailovers++;
@@ -320,10 +294,7 @@ export class HAFailoverCoordinator {
   /**
    * Determine if the local node should take over as leader.
    */
-  private async shouldTakeOver(
-    event: FailoverEvent,
-    localNodeId: string,
-  ): Promise<boolean> {
+  private async shouldTakeOver(event: FailoverEvent, localNodeId: string): Promise<boolean> {
     // For leader_failure: check if we're a valid candidate
     if (event.type === 'leader_failure') {
       // We can take over if we're not the affected node and we're alive
@@ -336,10 +307,7 @@ export class HAFailoverCoordinator {
         const isLeader = await this.consensusLayer.isLeader(event.shardId);
         // If we're already the leader, don't trigger another election
         if (isLeader) {
-          logger.debug(
-            { shardId: event.shardId },
-            'Local node is already leader — no election needed',
-          );
+          logger.debug({ shardId: event.shardId }, 'Local node is already leader — no election needed');
           return false;
         }
       } catch {
@@ -376,14 +344,8 @@ export class HAFailoverCoordinator {
    *      timeout), an election is/was in progress — back off silently and let
    *      Raft's own election converge. Only campaign if term has been stagnant.
    */
-  private async triggerElection(
-    event: FailoverEvent,
-    localNodeId: string,
-  ): Promise<boolean> {
-    logger.info(
-      { shardId: event.shardId, nodeId: localNodeId },
-      'Triggering leader election',
-    );
+  private async triggerElection(event: FailoverEvent, localNodeId: string): Promise<boolean> {
+    logger.info({ shardId: event.shardId, nodeId: localNodeId }, 'Triggering leader election');
 
     try {
       // For leader_failure or quorum_loss, trigger a direct election campaign
@@ -408,10 +370,7 @@ export class HAFailoverCoordinator {
         // the same term and neither wins the other's vote).
         const maxBackoffMs = 1500;
         const backoff = Math.floor(Math.random() * maxBackoffMs);
-        logger.debug(
-          { shardId: event.shardId, backoffMs: backoff },
-          'Randomized pre-campaign backoff',
-        );
+        logger.debug({ shardId: event.shardId, backoffMs: backoff }, 'Randomized pre-campaign backoff');
         await this.sleep(backoff);
 
         // ── SAFETY GUARD 3: Re-check leader AFTER backoff ─────────
@@ -431,10 +390,7 @@ export class HAFailoverCoordinator {
         try {
           // Directly campaign to become leader (no no-op propose needed)
           await this.consensusLayer.campaign(event.shardId);
-          logger.info(
-            { shardId: event.shardId },
-            'Election triggered via direct campaign',
-          );
+          logger.info({ shardId: event.shardId }, 'Election triggered via direct campaign');
 
           // Wait briefly for election to complete
           await this.sleep(1000);
@@ -442,10 +398,7 @@ export class HAFailoverCoordinator {
           // Check if election succeeded
           const isLeader = await this.consensusLayer.isLeader(event.shardId);
           if (isLeader) {
-            logger.info(
-              { shardId: event.shardId },
-              'Campaign succeeded — node is now leader',
-            );
+            logger.info({ shardId: event.shardId }, 'Campaign succeeded — node is now leader');
             return true;
           }
 
@@ -484,10 +437,7 @@ export class HAFailoverCoordinator {
           );
           try {
             await this.consensusLayer.propose(event.shardId, '{"type":"noop","ha_failover":true}');
-            logger.info(
-              { shardId: event.shardId },
-              'Election triggered via no-op proposal (fallback)',
-            );
+            logger.info({ shardId: event.shardId }, 'Election triggered via no-op proposal (fallback)');
             return true;
           } catch (proposeErr: any) {
             // If propose also fails, wait for auto-election
@@ -501,10 +451,7 @@ export class HAFailoverCoordinator {
             try {
               const isLeader = await this.consensusLayer.isLeader(event.shardId);
               if (isLeader) {
-                logger.info(
-                  { shardId: event.shardId },
-                  'Auto-election succeeded — node is now leader',
-                );
+                logger.info({ shardId: event.shardId }, 'Auto-election succeeded — node is now leader');
                 return true;
               }
             } catch {
@@ -531,17 +478,11 @@ export class HAFailoverCoordinator {
 
     // Avoid double-removal
     if (this.removedFromRaft.has(deadNodeId)) {
-      logger.debug(
-        { nodeId: deadNodeId },
-        'Node already removed from raft groups — skipping',
-      );
+      logger.debug({ nodeId: deadNodeId }, 'Node already removed from raft groups — skipping');
       return;
     }
 
-    logger.info(
-      { nodeId: deadNodeId, shardId: event.shardId },
-      'Removing dead node from raft group',
-    );
+    logger.info({ nodeId: deadNodeId, shardId: event.shardId }, 'Removing dead node from raft group');
 
     try {
       // Notify consensus layer of peer removal
@@ -553,15 +494,9 @@ export class HAFailoverCoordinator {
       };
       await this.consensusLayer.notifyTopologyChange(removeChange);
       this.removedFromRaft.add(deadNodeId);
-      logger.info(
-        { nodeId: deadNodeId, shardId: event.shardId },
-        'Dead node removed from raft group',
-      );
+      logger.info({ nodeId: deadNodeId, shardId: event.shardId }, 'Dead node removed from raft group');
     } catch (err) {
-      logger.error(
-        { err, nodeId: deadNodeId },
-        'Failed to remove dead node from raft group',
-      );
+      logger.error({ err, nodeId: deadNodeId }, 'Failed to remove dead node from raft group');
     }
   }
 
@@ -670,10 +605,7 @@ export class HAFailoverCoordinator {
   ): Promise<boolean> {
     // Prevent concurrent transfers for the same shard
     if (this.transferInProgress.get(shardId)) {
-      logger.warn(
-        { shardId, targetNodeId },
-        'Transfer already in progress for this shard — skipping',
-      );
+      logger.warn({ shardId, targetNodeId }, 'Transfer already in progress for this shard — skipping');
       return false;
     }
     this.transferInProgress.set(shardId, true);
@@ -688,10 +620,7 @@ export class HAFailoverCoordinator {
 
       // Safety check 1: Target must be alive
       if (!this.clusterTopology.isPeerAlive(targetNodeId)) {
-        logger.warn(
-          { shardId, targetNodeId },
-          'Target node is not alive — transfer aborted',
-        );
+        logger.warn({ shardId, targetNodeId }, 'Target node is not alive — transfer aborted');
         return false;
       }
 
@@ -725,10 +654,7 @@ export class HAFailoverCoordinator {
           }
         } catch {
           // Can't verify — proceed with caution (transfer may still fail)
-          logger.debug(
-            { shardId, targetNodeId },
-            'Could not verify target match index — proceeding with transfer',
-          );
+          logger.debug({ shardId, targetNodeId }, 'Could not verify target match index — proceeding with transfer');
         }
       }
 
@@ -753,10 +679,7 @@ export class HAFailoverCoordinator {
       const result = await Promise.race([transferPromise, timeoutPromise]);
       return result;
     } catch (err: any) {
-      logger.error(
-        { err, shardId, targetNodeId },
-        'Leadership transfer failed',
-      );
+      logger.error({ err, shardId, targetNodeId }, 'Leadership transfer failed');
       return false;
     } finally {
       this.transferInProgress.set(shardId, false);
@@ -784,10 +707,7 @@ export class HAFailoverCoordinator {
       // Verify the new leader is actually the target
       const newLeader = await this.consensusLayer.getLeader(shardId);
       if (newLeader === targetNodeId) {
-        logger.info(
-          { shardId, newLeader: targetNodeId },
-          'Leadership transferred successfully',
-        );
+        logger.info({ shardId, newLeader: targetNodeId }, 'Leadership transferred successfully');
         return true;
       }
 
@@ -804,10 +724,7 @@ export class HAFailoverCoordinator {
   /**
    * Configure leader transfer safety parameters.
    */
-  setTransferConfig(config: {
-    maxTransferLagMs?: number;
-    transferTimeoutMs?: number;
-  }): void {
+  setTransferConfig(config: { maxTransferLagMs?: number; transferTimeoutMs?: number }): void {
     if (config.maxTransferLagMs !== undefined) {
       this.maxTransferLagMs = Math.max(100, config.maxTransferLagMs);
     }

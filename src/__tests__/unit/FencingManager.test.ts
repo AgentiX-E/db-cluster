@@ -64,7 +64,7 @@ describe('FencingManager - Unit', () => {
     fm.receiveHeartbeat(0, 1, '1');
     fm.receiveHeartbeat(0, 2, '2');
     const status = fm.getStatus();
-    const s = status.shards.find(s => s.shardId === 0)!;
+    const s = status.shards.find((s) => s.shardId === 0)!;
     expect(s.currentTerm).toBe(2);
     expect(s.leaderId).toBe('2');
   });

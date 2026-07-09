@@ -60,7 +60,11 @@ function createNode(
   heartbeatTick: number = 3,
 ): TestNode {
   const nodeConfig = JSON.stringify({
-    id, host: '127.0.0.1', port, dataDir, peers,
+    id,
+    host: '127.0.0.1',
+    port,
+    dataDir,
+    peers,
     cert: { key: cert.key, cert: cert.cert, ca: cert.ca },
   });
   const clusterConfig = JSON.stringify({ electionTick, heartbeatTick });
@@ -97,15 +101,13 @@ function waitForMessage(
   timeoutMs: number,
   filter?: (msg: WorkerMessage) => boolean,
 ): Promise<WorkerMessage> {
-  const existing = nodes.flatMap(n =>
-    n.messages.filter(m => m.type === type && (!filter || filter(m))),
-  );
+  const existing = nodes.flatMap((n) => n.messages.filter((m) => m.type === type && (!filter || filter(m))));
   if (existing.length > 0) return Promise.resolve(existing[0]);
 
   return new Promise<WorkerMessage>((resolve, reject) => {
     const checkInterval = setInterval(() => {
       for (const n of nodes) {
-        const match = n.messages.find(m => m.type === type && (!filter || filter(m)));
+        const match = n.messages.find((m) => m.type === type && (!filter || filter(m)));
         if (match) {
           clearInterval(checkInterval);
           clearTimeout(timer);
@@ -122,7 +124,7 @@ function waitForMessage(
 }
 
 function sleep(ms: number): Promise<void> {
-  return new Promise(r => setTimeout(r, ms));
+  return new Promise((r) => setTimeout(r, ms));
 }
 
 function killNode(node: TestNode): void {
@@ -140,7 +142,11 @@ function clearMessages(nodes: TestNode[]): void {
 }
 
 function cleanupNode(node: TestNode): void {
-  try { node.process.kill('SIGKILL'); } catch { /* ignore */ }
+  try {
+    node.process.kill('SIGKILL');
+  } catch {
+    /* ignore */
+  }
 }
 
 async function sendCommand(node: TestNode, command: string, data?: string): Promise<void> {
@@ -148,26 +154,28 @@ async function sendCommand(node: TestNode, command: string, data?: string): Prom
 }
 
 function getMessages(nodes: TestNode[], type: string): WorkerMessage[] {
-  return nodes.flatMap(n => n.messages.filter(m => m.type === type));
+  return nodes.flatMap((n) => n.messages.filter((m) => m.type === type));
 }
 
 async function getAvailablePorts(count: number): Promise<number[]> {
   const net = await import('node:net');
   return Promise.all(
-    Array.from({ length: count }, () =>
-      new Promise<number>((resolve, reject) => {
-        const server = net.createServer();
-        server.listen(0, '127.0.0.1', () => {
-          const addr = server.address();
-          if (addr && typeof addr === 'object') {
-            const port = addr.port;
-            server.close(() => resolve(port));
-          } else {
-            server.close(() => reject(new Error('No port')));
-          }
-        });
-        server.on('error', reject);
-      }),
+    Array.from(
+      { length: count },
+      () =>
+        new Promise<number>((resolve, reject) => {
+          const server = net.createServer();
+          server.listen(0, '127.0.0.1', () => {
+            const addr = server.address();
+            if (addr && typeof addr === 'object') {
+              const port = addr.port;
+              server.close(() => resolve(port));
+            } else {
+              server.close(() => reject(new Error('No port')));
+            }
+          });
+          server.on('error', reject);
+        }),
     ),
   );
 }
@@ -195,9 +203,7 @@ describe('Raft Core Multi-Node Cluster', () => {
 
     for (let i = 0; i < count; i++) {
       const id = i + 1;
-      const peers = ports
-        .map((p, idx) => ({ id: idx + 1, host: '127.0.0.1', port: p }))
-        .filter(p => p.id !== id);
+      const peers = ports.map((p, idx) => ({ id: idx + 1, host: '127.0.0.1', port: p })).filter((p) => p.id !== id);
       const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), `raft-core-test-n${id}-`));
       const node = createNode(id, ports[i], peers, certs.nodes[i], dataDir);
       newNodes.push(node);
@@ -208,9 +214,7 @@ describe('Raft Core Multi-Node Cluster', () => {
     cluster.ports = ports;
 
     // Wait for all nodes to report ready
-    await Promise.all(newNodes.map(n =>
-      waitForMessage([n], 'ready', 10000),
-    ));
+    await Promise.all(newNodes.map((n) => waitForMessage([n], 'ready', 10000)));
 
     return newNodes;
   }
@@ -230,16 +234,14 @@ describe('Raft Core Multi-Node Cluster', () => {
     expect(leaderMsg.data?.leader).toBeLessThanOrEqual(3);
 
     // Let all nodes learn about the leader
-    await new Promise(r => setTimeout(r, 2000));
+    await new Promise((r) => setTimeout(r, 2000));
 
     // Request status from all nodes
-    newNodes.forEach(n => sendCommand(n, 'get-status'));
-    await new Promise(r => setTimeout(r, 1000));
+    newNodes.forEach((n) => sendCommand(n, 'get-status'));
+    await new Promise((r) => setTimeout(r, 1000));
 
     const statusMsgs = getMessages(newNodes, 'status');
-    const leaders = statusMsgs
-      .map(m => m.data?.leader)
-      .filter((l: any) => l != null && l > 0);
+    const leaders = statusMsgs.map((m) => m.data?.leader).filter((l: any) => l != null && l > 0);
 
     // At least some nodes agree on a leader
     if (leaders.length > 0) {
@@ -259,7 +261,7 @@ describe('Raft Core Multi-Node Cluster', () => {
     // Wait for leader
     const leaderMsg = await waitForMessage(newNodes, 'leader-elected', LEADER_ELECTION_TIMEOUT);
     const leaderId = leaderMsg.data.leader;
-    const leaderNode = newNodes.find(n => n.id === leaderId)!;
+    const leaderNode = newNodes.find((n) => n.id === leaderId)!;
 
     // Propose an entry via the leader
     const proposeData = `test-entry-${Date.now()}`;
@@ -271,14 +273,14 @@ describe('Raft Core Multi-Node Cluster', () => {
     expect(commitMsg.data.data).toBe(proposeData);
 
     // Allow replication to propagate
-    await new Promise(r => setTimeout(r, 2000));
+    await new Promise((r) => setTimeout(r, 2000));
 
     // Check status on all nodes
-    newNodes.forEach(n => sendCommand(n, 'get-status'));
-    await new Promise(r => setTimeout(r, 1000));
+    newNodes.forEach((n) => sendCommand(n, 'get-status'));
+    await new Promise((r) => setTimeout(r, 1000));
 
     const statusMsgs = getMessages(newNodes, 'status');
-    const logs = statusMsgs.map(m => m.data?.committedLog || []);
+    const logs = statusMsgs.map((m) => m.data?.committedLog || []);
     const nonEmptyLogs = logs.filter((l: any) => l.length > 0);
 
     expect(nonEmptyLogs.length).toBeGreaterThanOrEqual(1);
@@ -300,7 +302,7 @@ describe('Raft Core Multi-Node Cluster', () => {
     clearMessages(newNodes);
 
     // Kill the leader
-    const leaderNode = newNodes.find(n => n.id === initialLeaderId)!;
+    const leaderNode = newNodes.find((n) => n.id === initialLeaderId)!;
     killNode(leaderNode);
 
     // Give a brief moment for the surviving nodes to detect the leader is gone
@@ -308,7 +310,7 @@ describe('Raft Core Multi-Node Cluster', () => {
 
     // Wait for a new leader among remaining nodes.
     // Must be a DIFFERENT leader from the killed one, emitted by a surviving node.
-    const remainingNodes = newNodes.filter(n => n.id !== initialLeaderId);
+    const remainingNodes = newNodes.filter((n) => n.id !== initialLeaderId);
     const newLeaderMsg = await waitForMessage(
       remainingNodes,
       'leader-elected',
@@ -320,7 +322,7 @@ describe('Raft Core Multi-Node Cluster', () => {
     const newLeaderId = newLeaderMsg.data.leader;
     // The leader must be one of the surviving nodes
     expect(newLeaderId).not.toBe(initialLeaderId);
-    expect(remainingNodes.some(n => n.id === newLeaderId)).toBe(true);
+    expect(remainingNodes.some((n) => n.id === newLeaderId)).toBe(true);
   }, 40000);
 
   // ──────────────────────────────────────────
@@ -334,7 +336,7 @@ describe('Raft Core Multi-Node Cluster', () => {
     // Wait for initial leader
     const leaderMsg = await waitForMessage(newNodes, 'leader-elected', LEADER_ELECTION_TIMEOUT);
     const initialLeaderId = leaderMsg.data.leader;
-    const leaderNode = newNodes.find(n => n.id === initialLeaderId)!;
+    const leaderNode = newNodes.find((n) => n.id === initialLeaderId)!;
 
     // Propose before failure
     sendCommand(leaderNode, 'propose', 'pre-failure-entry');
@@ -345,15 +347,15 @@ describe('Raft Core Multi-Node Cluster', () => {
 
     // Kill the leader (graceful shutdown)
     sendCommand(leaderNode, 'shutdown');
-    await new Promise(r => setTimeout(r, 1000));
+    await new Promise((r) => setTimeout(r, 1000));
 
     // Wait for new leader among remaining nodes (takes longer with 2 nodes)
-    const remainingNodes = newNodes.filter(n => n.id !== initialLeaderId);
+    const remainingNodes = newNodes.filter((n) => n.id !== initialLeaderId);
     const newLeaderMsg = await waitForMessage(remainingNodes, 'leader-elected', REELECTION_TIMEOUT, (msg) => {
       return msg.data.leader !== initialLeaderId; // must be a DIFFERENT leader
     });
     const newLeaderId = newLeaderMsg.data.leader;
-    const newLeader = newNodes.find(n => n.id === newLeaderId)!;
+    const newLeader = newNodes.find((n) => n.id === newLeaderId)!;
     expect(newLeader).toBeDefined();
     expect(newLeader.id).not.toBe(initialLeaderId);
 
@@ -399,7 +401,7 @@ describe('Raft Core Multi-Node Cluster', () => {
       server.on('error', reject);
     });
 
-    const existingPorts = newNodes.map(n => ({
+    const existingPorts = newNodes.map((n) => ({
       id: n.id,
       port: cluster.ports[n.id - 1],
     }));
@@ -409,7 +411,7 @@ describe('Raft Core Multi-Node Cluster', () => {
       host: '127.0.0.1',
       port: roguePort,
       dataDir: fs.mkdtempSync(path.join(os.tmpdir(), 'raft-test-rogue-')),
-      peers: existingPorts.map(p => ({ id: p.id, host: '127.0.0.1', port: p.port })),
+      peers: existingPorts.map((p) => ({ id: p.id, host: '127.0.0.1', port: p.port })),
       cert: { key: certs.rogue.key, cert: certs.rogue.cert, ca: certs.rogue.ca },
     });
 
@@ -435,16 +437,25 @@ describe('Raft Core Multi-Node Cluster', () => {
 
     rogueCp.stderr?.on('data', (d: Buffer) => {
       const text = d.toString().toLowerCase();
-      if (text.includes('error') || text.includes('unauthorized') || text.includes('certificate') || text.includes('tls')) {
+      if (
+        text.includes('error') ||
+        text.includes('unauthorized') ||
+        text.includes('certificate') ||
+        text.includes('tls')
+      ) {
         errorDetected = true;
       }
     });
 
     // Wait for rogue to try connecting
-    await new Promise(r => setTimeout(r, 5000));
+    await new Promise((r) => setTimeout(r, 5000));
 
     // Cleanup rogue
-    try { rogueCp.kill('SIGKILL'); } catch { /* ignore */ }
+    try {
+      rogueCp.kill('SIGKILL');
+    } catch {
+      /* ignore */
+    }
 
     // Expect TLS rejection: either the process errored or connection was refused
     expect(errorDetected || rogueCp.exitCode !== 0).toBeTruthy();

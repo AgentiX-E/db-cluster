@@ -127,10 +127,10 @@ export class HAFailoverDetector {
   private consensusLayer: IConsensusLayer;
   private eventHandlers: Array<(event: FailoverEvent) => void> = [];
   private checkTimer: ReturnType<typeof setInterval> | null = null;
-  private leaderlessSince: Map<string, number> = new Map();   // shardId → startedMs
-  private lastCommitIndex: Map<string, number> = new Map();   // shardId → last known
-  private lastCommitTime: Map<string, number> = new Map();    // shardId → when recorded
-  private missedHeartbeats: Map<string, number> = new Map();  // peer/leader key → count
+  private leaderlessSince: Map<string, number> = new Map(); // shardId → startedMs
+  private lastCommitIndex: Map<string, number> = new Map(); // shardId → last known
+  private lastCommitTime: Map<string, number> = new Map(); // shardId → when recorded
+  private missedHeartbeats: Map<string, number> = new Map(); // peer/leader key → count
   private knownShards: Set<string> = new Set();
   private lastElectionTime: Map<string, number> = new Map();
   private started = false;
@@ -182,9 +182,9 @@ export class HAFailoverDetector {
     this.startTimestamp = Date.now();
     logger.info(
       `Starting HA failover detector (interval=${this.config.checkIntervalMs}ms, ` +
-      `leaderlessTimeout=${this.config.leaderlessFailoverTimeoutMs}ms, ` +
-      `stagnationTimeout=${this.config.leaderStagnationTimeoutMs}ms, ` +
-      `startupGrace=${this.config.startupGracePeriodMs}ms)`,
+        `leaderlessTimeout=${this.config.leaderlessFailoverTimeoutMs}ms, ` +
+        `stagnationTimeout=${this.config.leaderStagnationTimeoutMs}ms, ` +
+        `startupGrace=${this.config.startupGracePeriodMs}ms)`,
     );
     this.checkTimer = setInterval(() => {
       this.runDetectionCycle().catch((err) => {
@@ -224,7 +224,7 @@ export class HAFailoverDetector {
 
   private inStartupGrace(): boolean {
     if (this.startTimestamp === 0) return true;
-    return (Date.now() - this.startTimestamp) < this.config.startupGracePeriodMs;
+    return Date.now() - this.startTimestamp < this.config.startupGracePeriodMs;
   }
 
   // ── Internal detection logic ───────────────────────────────────────
@@ -261,12 +261,7 @@ export class HAFailoverDetector {
     }
   }
 
-  private async checkShard(
-    shardId: string,
-    localNodeId: string,
-    peerIds: string[],
-    inGrace: boolean,
-  ): Promise<void> {
+  private async checkShard(shardId: string, localNodeId: string, peerIds: string[], inGrace: boolean): Promise<void> {
     const now = Date.now();
 
     // ── [PATH 1 & 2] Get current leader and commit index ──────────
@@ -299,7 +294,7 @@ export class HAFailoverDetector {
       logger.debug(
         { shardId, leaderlessMs: leaderlessDuration, timeoutMs: this.config.leaderlessFailoverTimeoutMs },
         `No leader — observing Raft election` +
-        ` (${leaderlessDuration}ms / ${this.config.leaderlessFailoverTimeoutMs}ms threshold)`,
+          ` (${leaderlessDuration}ms / ${this.config.leaderlessFailoverTimeoutMs}ms threshold)`,
       );
 
       // Only trigger failover if leaderless period exceeds the generous timeout.
@@ -412,10 +407,7 @@ export class HAFailoverDetector {
             logger.warn({ peerId }, 'Node failure detected');
             this.fireEvent(event);
           } else {
-            logger.info(
-              { peerId },
-              'Would fire node_failure but suppressed by startup grace',
-            );
+            logger.info({ peerId }, 'Would fire node_failure but suppressed by startup grace');
           }
         }
       } else {

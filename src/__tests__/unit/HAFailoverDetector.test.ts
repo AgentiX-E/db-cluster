@@ -30,10 +30,10 @@ function createMockTopology(nodeId = 'node-1', peerIds = ['node-2', 'node-3']): 
 
 function createMockConsensusLayer(
   overrides: Partial<{
-    getLeader: (shardId: string) => string | null,
-    isLeader: (shardId: string) => boolean,
-    getCommitIndex: (shardId: string) => number,
-    getHealthStatus: () => any[],
+    getLeader: (shardId: string) => string | null;
+    isLeader: (shardId: string) => boolean;
+    getCommitIndex: (shardId: string) => number;
+    getHealthStatus: () => any[];
   }> = {},
 ): IConsensusLayer {
   const defaults = {
@@ -148,7 +148,7 @@ describe('HAFailoverDetector — Unit', () => {
     expect(events.length).toBe(0);
 
     // Wait for timeout
-    await new Promise(r => setTimeout(r, 150));
+    await new Promise((r) => setTimeout(r, 150));
 
     // Second check — should fire quorum_loss
     await leaderlessDetector.checkNow();
@@ -180,7 +180,7 @@ describe('HAFailoverDetector — Unit', () => {
     graceDetector.start();
 
     // Wait for potential detection
-    await new Promise(r => setTimeout(r, 200));
+    await new Promise((r) => setTimeout(r, 200));
     await graceDetector.checkNow();
 
     // Should be suppressed due to startup grace
@@ -209,7 +209,7 @@ describe('HAFailoverDetector — Unit', () => {
     // Multiple checks with leader present — should never trigger failover
     for (let i = 0; i < 5; i++) {
       await leaderDetector.checkNow();
-      await new Promise(r => setTimeout(r, 50));
+      await new Promise((r) => setTimeout(r, 50));
     }
 
     expect(events.length).toBe(0);

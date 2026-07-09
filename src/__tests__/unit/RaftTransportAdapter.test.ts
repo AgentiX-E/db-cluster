@@ -42,7 +42,7 @@ function makeAppendEntries(to: string, entries: Array<{ index: string }>): any {
     from: '1',
     to,
     term: '1',
-    entries: entries.map(e => ({
+    entries: entries.map((e) => ({
       ...e,
       term: '1',
       type: 0,

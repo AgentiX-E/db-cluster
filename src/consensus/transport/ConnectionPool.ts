@@ -40,7 +40,6 @@ import { PeerCircuitBreakerWrapper, PeerCircuitBreakerOptions, CircuitBreakerMet
 import pino from 'pino';
 const logger = pino({ level: process.env.LOG_LEVEL || 'info' });
 
-
 // ──────────────────────────────────────────
 //  Types & Interfaces
 // ──────────────────────────────────────────
@@ -346,12 +345,7 @@ export class PeerConnection extends EventEmitter {
 //  Backoff calculator
 // ──────────────────────────────────────────
 
-function computeBackoff(
-  attempt: number,
-  initial: number,
-  max: number,
-  factor: number,
-): number {
+function computeBackoff(attempt: number, initial: number, max: number, factor: number): number {
   const base = Math.min(initial * Math.pow(factor, attempt), max);
   // 30% jitter: multiply by random [0.7, 1.3]
   const jitter = 0.7 + Math.random() * 0.6;
@@ -366,9 +360,7 @@ function validatePeerCert(socket: tls.TLSSocket, expectedPeerId: number, verifyO
   const cert = socket.getPeerCertificate();
   if (!cert || !cert.subject) return false;
 
-  const cnPrefixes = verifyOpts?.allowedCNPrefixes?.length
-    ? verifyOpts.allowedCNPrefixes
-    : [`raft-node-`];
+  const cnPrefixes = verifyOpts?.allowedCNPrefixes?.length ? verifyOpts.allowedCNPrefixes : [`raft-node-`];
   const cnStrict = !cnPrefixes.includes('*');
 
   if (cnStrict) {
@@ -383,9 +375,7 @@ function validatePeerCert(socket: tls.TLSSocket, expectedPeerId: number, verifyO
   if (cert.valid_to && new Date(cert.valid_to) < now) return false;
 
   // Check Subject Alternative Name (SAN) if present
-  const sanPrefixes = verifyOpts?.allowedSANPrefixes?.length
-    ? verifyOpts.allowedSANPrefixes
-    : [`raft-node-`];
+  const sanPrefixes = verifyOpts?.allowedSANPrefixes?.length ? verifyOpts.allowedSANPrefixes : [`raft-node-`];
   const sanStrict = !sanPrefixes.includes('*');
   if (sanStrict) {
     const sans = cert.subjectaltname;
@@ -405,12 +395,8 @@ function validatePeerCert(socket: tls.TLSSocket, expectedPeerId: number, verifyO
   if (cert.ext_key_usage && !verifyOpts?.skipExtKeyUsageCheck) {
     const OID_SERVER_AUTH = '1.3.6.1.5.5.7.3.1';
     const OID_CLIENT_AUTH = '1.3.6.1.5.5.7.3.2';
-    const hasServerAuth = cert.ext_key_usage.some(
-      (ku: string) => ku === 'serverAuth' || ku === OID_SERVER_AUTH,
-    );
-    const hasClientAuth = cert.ext_key_usage.some(
-      (ku: string) => ku === 'clientAuth' || ku === OID_CLIENT_AUTH,
-    );
+    const hasServerAuth = cert.ext_key_usage.some((ku: string) => ku === 'serverAuth' || ku === OID_SERVER_AUTH);
+    const hasClientAuth = cert.ext_key_usage.some((ku: string) => ku === 'clientAuth' || ku === OID_CLIENT_AUTH);
     if (!hasServerAuth && !hasClientAuth) return false;
   }
 
@@ -478,15 +464,9 @@ export class ConnectionPool {
 
     // Resolve cert/key/ca to Buffer
     this._tlsOptions = {
-      cert: typeof config.tls.cert === 'string'
-        ? Buffer.from(config.tls.cert)
-        : config.tls.cert,
-      key: typeof config.tls.key === 'string'
-        ? Buffer.from(config.tls.key)
-        : config.tls.key,
-      ca: typeof config.tls.ca === 'string'
-        ? Buffer.from(config.tls.ca)
-        : config.tls.ca,
+      cert: typeof config.tls.cert === 'string' ? Buffer.from(config.tls.cert) : config.tls.cert,
+      key: typeof config.tls.key === 'string' ? Buffer.from(config.tls.key) : config.tls.key,
+      ca: typeof config.tls.ca === 'string' ? Buffer.from(config.tls.ca) : config.tls.ca,
     };
 
     // Build peer info map
@@ -496,10 +476,7 @@ export class ConnectionPool {
 
     // D3: Initialize circuit breakers for each peer
     for (const peer of config.peers) {
-      this._circuitBreakers.set(
-        peer.id,
-        new PeerCircuitBreakerWrapper(peer.id, this.config.circuitBreaker),
-      );
+      this._circuitBreakers.set(peer.id, new PeerCircuitBreakerWrapper(peer.id, this.config.circuitBreaker));
     }
   }
 
@@ -519,10 +496,7 @@ export class ConnectionPool {
 
     // Create circuit breaker if not exists
     if (!this._circuitBreakers.has(peer.id)) {
-      this._circuitBreakers.set(
-        peer.id,
-        new PeerCircuitBreakerWrapper(peer.id, this.config.circuitBreaker),
-      );
+      this._circuitBreakers.set(peer.id, new PeerCircuitBreakerWrapper(peer.id, this.config.circuitBreaker));
     }
 
     // Initiate connection (pool handles retry/backoff internally)
@@ -901,7 +875,9 @@ export class ConnectionPool {
       if (cb) {
         // Fire a failing action through the circuit breaker to count errors
         try {
-          await cb.fire(async () => { throw err; });
+          await cb.fire(async () => {
+            throw err;
+          });
         } catch {
           // Expected — the action always fails
         }
@@ -973,9 +949,7 @@ export class ConnectionPool {
 
             // ── 1. CN matching ──────────────────────────────────────
             // Default: CN === "raft-node-{peer.id}"
-            const cnPrefixes = verifyOpts.allowedCNPrefixes?.length
-              ? verifyOpts.allowedCNPrefixes
-              : [`raft-node-`];
+            const cnPrefixes = verifyOpts.allowedCNPrefixes?.length ? verifyOpts.allowedCNPrefixes : [`raft-node-`];
             const cnStrict = !cnPrefixes.includes('*');
             if (cnStrict) {
               const cn = cert.subject?.CN || '';
@@ -984,16 +958,14 @@ export class ConnectionPool {
               if (!cnMatch) {
                 return new Error(
                   `Certificate CN "${cn}" does not match any expected CN ` +
-                  `(prefixes: ${JSON.stringify(cnPrefixes)}, peer.id: ${peer.id})`,
+                    `(prefixes: ${JSON.stringify(cnPrefixes)}, peer.id: ${peer.id})`,
                 );
               }
             }
 
             // ── 2. SAN matching ──────────────────────────────────────
             // Default: SAN contains "DNS:raft-node-{peer.id}"
-            const sanPrefixes = verifyOpts.allowedSANPrefixes?.length
-              ? verifyOpts.allowedSANPrefixes
-              : [`raft-node-`];
+            const sanPrefixes = verifyOpts.allowedSANPrefixes?.length ? verifyOpts.allowedSANPrefixes : [`raft-node-`];
             const sanStrict = !sanPrefixes.includes('*');
             if (sanStrict) {
               const sans = cert.subjectaltname;
@@ -1010,7 +982,7 @@ export class ConnectionPool {
                 if (!sanMatch) {
                   return new Error(
                     `Certificate SAN entries [${sans}] do not contain expected ` +
-                    `"DNS:{prefix}{peer.id}" (prefixes: ${JSON.stringify(sanPrefixes)}, peer.id: ${peer.id})`,
+                      `"DNS:{prefix}{peer.id}" (prefixes: ${JSON.stringify(sanPrefixes)}, peer.id: ${peer.id})`,
                   );
                 }
               }
@@ -1030,16 +1002,14 @@ export class ConnectionPool {
               if (!hasServerAuth && !hasClientAuth) {
                 return new Error(
                   `Certificate extended key usage [${cert.ext_key_usage}] lacks ` +
-                  `serverAuth (${OID_SERVER_AUTH}) / clientAuth (${OID_CLIENT_AUTH})`,
+                    `serverAuth (${OID_SERVER_AUTH}) / clientAuth (${OID_CLIENT_AUTH})`,
                 );
               }
             }
 
             // ── 4. Hostname ──────────────────────────────────────
             if (hostname && hostname !== peer.host && !hostname.endsWith(peer.host)) {
-              return new Error(
-                `Certificate hostname "${hostname}" does not match peer host "${peer.host}"`,
-              );
+              return new Error(`Certificate hostname "${hostname}" does not match peer host "${peer.host}"`);
             }
 
             return undefined; // Identity verified

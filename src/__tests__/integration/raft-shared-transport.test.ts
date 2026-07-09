@@ -62,7 +62,7 @@ const POLL_INTERVAL_MS = 500;
 /** One RaftAdapter instance with its metadata */
 interface ShardNode {
   adapter: RaftAdapter;
-  nodeId: number;     // 1, 2, or 3
+  nodeId: number; // 1, 2, or 3
   shardIndex: number; // 0 or 1
   dataDir: string;
   committed: string[];
@@ -85,19 +85,18 @@ type Cluster = ClusterNode[];
 // ──────────────────────────────────────────
 
 function sleep(ms: number): Promise<void> {
-  return new Promise(r => setTimeout(r, ms));
+  return new Promise((r) => setTimeout(r, ms));
 }
 
-async function waitForLeaderInGroup(
-  shards: ShardNode[],
-  timeoutMs: number = LEADER_TIMEOUT_MS,
-): Promise<ShardNode> {
+async function waitForLeaderInGroup(shards: ShardNode[], timeoutMs: number = LEADER_TIMEOUT_MS): Promise<ShardNode> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     for (const s of shards) {
       try {
         if (await s.adapter.isLeader()) return s;
-      } catch { /* not ready */ }
+      } catch {
+        /* not ready */
+      }
     }
     await sleep(POLL_INTERVAL_MS);
   }
@@ -105,7 +104,7 @@ async function waitForLeaderInGroup(
 }
 
 function getShardGroup(cluster: Cluster, shardIndex: number): ShardNode[] {
-  return cluster.flatMap(n => n.shards.filter(s => s.shardIndex === shardIndex));
+  return cluster.flatMap((n) => n.shards.filter((s) => s.shardIndex === shardIndex));
 }
 
 async function proposeAndWait(
@@ -117,13 +116,13 @@ async function proposeAndWait(
   await leader.adapter.propose(data);
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
-    const allCommitted = allShardsInGroup.every(s => s.committed.includes(data));
+    const allCommitted = allShardsInGroup.every((s) => s.committed.includes(data));
     if (allCommitted) return;
     await sleep(100);
   }
   const pending = allShardsInGroup
-    .filter(s => !s.committed.includes(data))
-    .map(s => `node${s.nodeId}shard${s.shardIndex}`);
+    .filter((s) => !s.committed.includes(data))
+    .map((s) => `node${s.nodeId}shard${s.shardIndex}`);
   throw new Error(`Data "${data}" not committed on: ${pending.join(', ')} after ${timeoutMs}ms`);
 }
 
@@ -157,7 +156,7 @@ describe('Single-process multi-RaftGroup via SharedBatchedTransport', () => {
 
       const transportConfig: NodeTransportConfig = {
         node: { id: nodeId, host: '127.0.0.1', port: ports[i] },
-        peers: peerConfigs.filter(p => p.id !== nodeId),
+        peers: peerConfigs.filter((p) => p.id !== nodeId),
         tls: tlsCerts.nodes[i],
       };
 
@@ -190,11 +189,7 @@ describe('Single-process multi-RaftGroup via SharedBatchedTransport', () => {
           committed.push(data);
         };
 
-        await adapter.init(
-          applyHandler,
-          undefined,
-          { transport, shardId: s } as any,
-        );
+        await adapter.init(applyHandler, undefined, { transport, shardId: s } as any);
 
         shards.push({ adapter, nodeId, shardIndex: s, dataDir: shardDataDir, committed });
       }
@@ -206,20 +201,24 @@ describe('Single-process multi-RaftGroup via SharedBatchedTransport', () => {
     await sleep(2000);
   }, 60_000);
 
-  it('AC 12.2: All 6 shards elect leaders within 30 seconds', async () => {
-    // Wait for leaders in both shard groups
-    const shardGroup0 = getShardGroup(cluster, 0);
-    const shardGroup1 = getShardGroup(cluster, 1);
+  it(
+    'AC 12.2: All 6 shards elect leaders within 30 seconds',
+    async () => {
+      // Wait for leaders in both shard groups
+      const shardGroup0 = getShardGroup(cluster, 0);
+      const shardGroup1 = getShardGroup(cluster, 1);
 
-    const leader0 = await waitForLeaderInGroup(shardGroup0, LEADER_TIMEOUT_MS);
-    const leader1 = await waitForLeaderInGroup(shardGroup1, LEADER_TIMEOUT_MS);
+      const leader0 = await waitForLeaderInGroup(shardGroup0, LEADER_TIMEOUT_MS);
+      const leader1 = await waitForLeaderInGroup(shardGroup1, LEADER_TIMEOUT_MS);
 
-    expect(leader0).toBeDefined();
-    expect(leader1).toBeDefined();
-    // Leaders should be on different nodes (independent elections)
-    expect(leader0.shardIndex).toBe(0);
-    expect(leader1.shardIndex).toBe(1);
-  }, LEADER_TIMEOUT_MS + 5000);
+      expect(leader0).toBeDefined();
+      expect(leader1).toBeDefined();
+      // Leaders should be on different nodes (independent elections)
+      expect(leader0.shardIndex).toBe(0);
+      expect(leader1.shardIndex).toBe(1);
+    },
+    LEADER_TIMEOUT_MS + 5000,
+  );
 
   it('AC 12.3: Entries proposed to shard 0 commit on all 3 nodes of shard 0', async () => {
     const shardGroup0 = getShardGroup(cluster, 0);

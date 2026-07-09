@@ -78,7 +78,10 @@ vi.mock('../../consensus/core/RaftGroup', () => {
       }
     },
     __mockGroups: mockGroups,
-    __reset: () => { mockGroups.clear(); mockGroupId = 0; },
+    __reset: () => {
+      mockGroups.clear();
+      mockGroupId = 0;
+    },
   };
 });
 
@@ -86,7 +89,9 @@ vi.mock('../../consensus/core/RaftGroup', () => {
 function createMockReplica(): IShardReplica {
   let applied = 0;
   return {
-    apply: vi.fn().mockImplementation(async () => { applied++; }),
+    apply: vi.fn().mockImplementation(async () => {
+      applied++;
+    }),
     getAppliedIndex: vi.fn().mockImplementation(async () => applied),
     lastAppliedIndex: vi.fn(() => applied),
     shardId: vi.fn(() => 0),
@@ -123,8 +128,24 @@ describe('RaftGroupManager Integration', () => {
     const r1 = createMockReplica();
     const r2 = createMockReplica();
 
-    manager.registerShardWithReplica(1, r1, [{ nodeId: 'n1', raftIndex: 1 }, { nodeId: 'n2', raftIndex: 2 }], 1);
-    manager.registerShardWithReplica(2, r2, [{ nodeId: 'n1', raftIndex: 1 }, { nodeId: 'n2', raftIndex: 2 }], 1);
+    manager.registerShardWithReplica(
+      1,
+      r1,
+      [
+        { nodeId: 'n1', raftIndex: 1 },
+        { nodeId: 'n2', raftIndex: 2 },
+      ],
+      1,
+    );
+    manager.registerShardWithReplica(
+      2,
+      r2,
+      [
+        { nodeId: 'n1', raftIndex: 1 },
+        { nodeId: 'n2', raftIndex: 2 },
+      ],
+      1,
+    );
 
     const groups = (manager as any).groups as Map<number, any>;
     expect(groups.size).toBe(2);
@@ -137,7 +158,15 @@ describe('RaftGroupManager Integration', () => {
   //
   it('AC 28.2: propose delegates to correct shard group', async () => {
     const r1 = createMockReplica();
-    manager.registerShardWithReplica(1, r1, [{ nodeId: 'n1', raftIndex: 1 }, { nodeId: 'n2', raftIndex: 2 }], 1);
+    manager.registerShardWithReplica(
+      1,
+      r1,
+      [
+        { nodeId: 'n1', raftIndex: 1 },
+        { nodeId: 'n2', raftIndex: 2 },
+      ],
+      1,
+    );
 
     await manager.propose(1, { command: 'test', data: Buffer.from('test') });
 
@@ -159,7 +188,15 @@ describe('RaftGroupManager Integration', () => {
   //
   it('AC 28.4: IsLeader/getLeader delegates to correct group', async () => {
     const r1 = createMockReplica();
-    manager.registerShardWithReplica(1, r1, [{ nodeId: 'n1', raftIndex: 1 }, { nodeId: 'n2', raftIndex: 2 }], 1);
+    manager.registerShardWithReplica(
+      1,
+      r1,
+      [
+        { nodeId: 'n1', raftIndex: 1 },
+        { nodeId: 'n2', raftIndex: 2 },
+      ],
+      1,
+    );
 
     const isLeader = await manager.isLeader('1');
     expect(isLeader).toBe(true);
@@ -171,8 +208,24 @@ describe('RaftGroupManager Integration', () => {
   it('AC 28.5: stop() stops all managed groups', async () => {
     const r1 = createMockReplica();
     const r2 = createMockReplica();
-    manager.registerShardWithReplica(1, r1, [{ nodeId: 'n1', raftIndex: 1 }, { nodeId: 'n2', raftIndex: 2 }], 1);
-    manager.registerShardWithReplica(2, r2, [{ nodeId: 'n1', raftIndex: 1 }, { nodeId: 'n2', raftIndex: 2 }], 1);
+    manager.registerShardWithReplica(
+      1,
+      r1,
+      [
+        { nodeId: 'n1', raftIndex: 1 },
+        { nodeId: 'n2', raftIndex: 2 },
+      ],
+      1,
+    );
+    manager.registerShardWithReplica(
+      2,
+      r2,
+      [
+        { nodeId: 'n1', raftIndex: 1 },
+        { nodeId: 'n2', raftIndex: 2 },
+      ],
+      1,
+    );
 
     // Capture references before stop clears the map
     const groups = (manager as any).groups as Map<number, any>;
@@ -193,7 +246,10 @@ describe('RaftGroupManager Integration', () => {
     const replica = createMockReplica();
     manager.registerShard('1', {
       replica,
-      peers: [{ nodeId: 'n1', raftIndex: 1 }, { nodeId: 'n2', raftIndex: 2 }],
+      peers: [
+        { nodeId: 'n1', raftIndex: 1 },
+        { nodeId: 'n2', raftIndex: 2 },
+      ],
       localRaftIndex: 1,
     });
 
@@ -209,7 +265,10 @@ describe('RaftGroupManager Integration', () => {
     manager.registerShardWithReplica(
       1,
       replica,
-      [{ nodeId: 'n1', raftIndex: 1 }, { nodeId: 'n2', raftIndex: 2 }],
+      [
+        { nodeId: 'n1', raftIndex: 1 },
+        { nodeId: 'n2', raftIndex: 2 },
+      ],
       1,
     );
 
@@ -222,7 +281,15 @@ describe('RaftGroupManager Integration', () => {
   //
   it('AC 28.8: deregisterShard removes group cleanly', () => {
     const replica = createMockReplica();
-    manager.registerShardWithReplica(1, replica, [{ nodeId: 'n1', raftIndex: 1 }, { nodeId: 'n2', raftIndex: 2 }], 1);
+    manager.registerShardWithReplica(
+      1,
+      replica,
+      [
+        { nodeId: 'n1', raftIndex: 1 },
+        { nodeId: 'n2', raftIndex: 2 },
+      ],
+      1,
+    );
 
     manager.deregisterShard(1);
 
@@ -236,8 +303,24 @@ describe('RaftGroupManager Integration', () => {
   it('AC 28.9: Multiple shards operate independently', async () => {
     const r1 = createMockReplica();
     const r2 = createMockReplica();
-    manager.registerShardWithReplica(1, r1, [{ nodeId: 'n1', raftIndex: 1 }, { nodeId: 'n2', raftIndex: 2 }], 1);
-    manager.registerShardWithReplica(2, r2, [{ nodeId: 'n1', raftIndex: 1 }, { nodeId: 'n2', raftIndex: 2 }], 1);
+    manager.registerShardWithReplica(
+      1,
+      r1,
+      [
+        { nodeId: 'n1', raftIndex: 1 },
+        { nodeId: 'n2', raftIndex: 2 },
+      ],
+      1,
+    );
+    manager.registerShardWithReplica(
+      2,
+      r2,
+      [
+        { nodeId: 'n1', raftIndex: 1 },
+        { nodeId: 'n2', raftIndex: 2 },
+      ],
+      1,
+    );
 
     const groups = (manager as any).groups as Map<number, any>;
 
@@ -265,8 +348,24 @@ describe('RaftGroupManager Integration', () => {
   it('AC 28.10: getLeaderHealthStatus returns health for all groups', async () => {
     const r1 = createMockReplica();
     const r2 = createMockReplica();
-    manager.registerShardWithReplica(1, r1, [{ nodeId: 'n1', raftIndex: 1 }, { nodeId: 'n2', raftIndex: 2 }], 1);
-    manager.registerShardWithReplica(2, r2, [{ nodeId: 'n1', raftIndex: 1 }, { nodeId: 'n2', raftIndex: 2 }], 1);
+    manager.registerShardWithReplica(
+      1,
+      r1,
+      [
+        { nodeId: 'n1', raftIndex: 1 },
+        { nodeId: 'n2', raftIndex: 2 },
+      ],
+      1,
+    );
+    manager.registerShardWithReplica(
+      2,
+      r2,
+      [
+        { nodeId: 'n1', raftIndex: 1 },
+        { nodeId: 'n2', raftIndex: 2 },
+      ],
+      1,
+    );
 
     const health = await manager.getLeaderHealthStatus();
     expect(health).toBeDefined();

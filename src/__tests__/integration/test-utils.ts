@@ -109,15 +109,21 @@ export class RaftTestNode {
     });
   }
 
-  get ready(): boolean { return this._ready; }
+  get ready(): boolean {
+    return this._ready;
+  }
 
-  get messages(): RaftNodeMessage[] { return this._messages.slice(); }
+  get messages(): RaftNodeMessage[] {
+    return this._messages.slice();
+  }
 
-  clearMessages(): void { this._messages = []; }
+  clearMessages(): void {
+    this._messages = [];
+  }
 
   waitForMessage(type: string, timeoutMs: number = 30000): Promise<RaftNodeMessage> {
     return new Promise((resolve, reject) => {
-      const existing = this._messages.find(m => m.type === type);
+      const existing = this._messages.find((m) => m.type === type);
       if (existing) return resolve(existing);
 
       const timer = setTimeout(() => {
@@ -207,35 +213,37 @@ export class TestRaftCluster {
   }
 
   async stop(): Promise<void> {
-    await Promise.all(this.nodes.map(n => n.gracefulShutdown()));
-    this.nodeConfigs.forEach(c => cleanupTempDir(c.dataDir));
+    await Promise.all(this.nodes.map((n) => n.gracefulShutdown()));
+    this.nodeConfigs.forEach((c) => cleanupTempDir(c.dataDir));
   }
 
   async waitForLeader(timeoutMs: number = 30000): Promise<number> {
-    const promises = this.nodes.map(n => n.waitForMessage('leader-elected', timeoutMs));
+    const promises = this.nodes.map((n) => n.waitForMessage('leader-elected', timeoutMs));
     const result = await Promise.race(promises);
     return result.nodeId;
   }
 
   async propose(leaderId: number, data: string): Promise<void> {
-    const leader = this.nodes.find(n => n.config.id === leaderId);
+    const leader = this.nodes.find((n) => n.config.id === leaderId);
     if (!leader) throw new Error(`Node ${leaderId} not found`);
     leader.send({ command: 'propose', data });
   }
 
   getAllLogs(): Promise<any[]> {
-    return Promise.all(this.nodes.map(n => {
-      return new Promise((resolve) => {
-        const handler = (msg: any) => {
-          if (msg && msg.type === 'status') {
-            n.process.removeListener('message', handler);
-            resolve(msg.data);
-          }
-        };
-        n.process.on('message', handler);
-        n.send({ command: 'get-status' });
-      });
-    }));
+    return Promise.all(
+      this.nodes.map((n) => {
+        return new Promise((resolve) => {
+          const handler = (msg: any) => {
+            if (msg && msg.type === 'status') {
+              n.process.removeListener('message', handler);
+              resolve(msg.data);
+            }
+          };
+          n.process.on('message', handler);
+          n.send({ command: 'get-status' });
+        });
+      }),
+    );
   }
 }
 

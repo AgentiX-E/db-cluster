@@ -111,7 +111,8 @@ export class RaftTransportAdapter {
    */
   setPipelineWindowConfig(config: Partial<PipelineWindowConfig>): void {
     if (config.maxInFlight !== undefined) this._pipelineWindow.maxInFlight = Math.max(1, config.maxInFlight);
-    if (config.maxRejectionsBeforeSerial !== undefined) this._pipelineWindow.maxRejectionsBeforeSerial = Math.max(1, config.maxRejectionsBeforeSerial);
+    if (config.maxRejectionsBeforeSerial !== undefined)
+      this._pipelineWindow.maxRejectionsBeforeSerial = Math.max(1, config.maxRejectionsBeforeSerial);
     if (config.enabled !== undefined) this._pipelineWindow.enabled = config.enabled;
   }
 
@@ -271,13 +272,7 @@ export class RaftTransportAdapter {
       // ── Pipeline window tracking ──
       // For AppendEntries messages (msgType === 1), track the entries
       // as in-flight for the target peer.
-      if (
-        this._pipelineWindow.enabled &&
-        msg.msgType === 1 &&
-        msg.entries &&
-        msg.entries.length > 0 &&
-        msg.to
-      ) {
+      if (this._pipelineWindow.enabled && msg.msgType === 1 && msg.entries && msg.entries.length > 0 && msg.to) {
         const targetPeer = String(msg.to);
         this.registerPeer(targetPeer, Number(msg.entries[0].index || '1'));
 

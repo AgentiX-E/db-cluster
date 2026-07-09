@@ -1,6 +1,6 @@
 declare module 'opossum' {
   import { EventEmitter } from 'events';
-  
+
   interface CircuitBreakerOptions {
     timeout?: number;
     maxFailures?: number;
@@ -25,9 +25,17 @@ declare module 'opossum' {
     disable(): void;
     enable(): void;
     clearCache(): void;
-    status: { closed: boolean; open: boolean; halfOpen: boolean; stats: { failures: number; successes: number; latencyTimes: number[] } };
+    status: {
+      closed: boolean;
+      open: boolean;
+      halfOpen: boolean;
+      stats: { failures: number; successes: number; latencyTimes: number[] };
+    };
     stats: { failures: number; successes: number; latencyMean: number; latencyTimes: number[] };
-    on(event: 'open' | 'close' | 'halfOpen' | 'failure' | 'reject' | 'success' | 'timeout', handler: (...args: any[]) => void): this;
+    on(
+      event: 'open' | 'close' | 'halfOpen' | 'failure' | 'reject' | 'success' | 'timeout',
+      handler: (...args: any[]) => void,
+    ): this;
     name: string;
     enabled: boolean;
     isOurError: (err: any) => boolean;

@@ -30,7 +30,6 @@ import { RaftAdapter, SnapshotMeta } from '../core/RaftAdapter';
 import pino from 'pino';
 const logger = pino({ level: process.env.LOG_LEVEL || 'info' });
 
-
 // ──────────────────────────────────────────
 //  Types
 // ──────────────────────────────────────────
@@ -83,11 +82,7 @@ export class InstallSnapshotHandler {
   private incomingState: Map<string, ChunkAssemblyState> = new Map();
   private nodeId: number;
 
-  constructor(
-    snapshotDir: string,
-    nodeId: number,
-    config?: Partial<InstallSnapshotHandlerConfig>,
-  ) {
+  constructor(snapshotDir: string, nodeId: number, config?: Partial<InstallSnapshotHandlerConfig>) {
     this.nodeId = nodeId;
     this.config = { ...DEFAULT_CONFIG, ...config, snapshotDir };
     if (!fs.existsSync(this.config.snapshotDir)) {
@@ -108,11 +103,7 @@ export class InstallSnapshotHandler {
   async handleChunk(
     req: InstallSnapshotRequest,
     raft: RaftAdapter,
-    installSnapshotCallback: (
-      snapshotData: Buffer,
-      meta: SnapshotMeta,
-      raft: RaftAdapter,
-    ) => Promise<void>,
+    installSnapshotCallback: (snapshotData: Buffer, meta: SnapshotMeta, raft: RaftAdapter) => Promise<void>,
   ): Promise<InstallSnapshotResponse> {
     const term = await raft.getTerm();
     const leaderTerm = Number(req.term);
@@ -145,7 +136,7 @@ export class InstallSnapshotHandler {
     if (req.offset !== state.lastOffset + 1 && state.lastOffset !== -1) {
       logger.warn(
         `[InstallSnapshot] Gap detected in chunks for ${key}: ` +
-        `expected offset ${state.lastOffset + 1}, got ${req.offset}`,
+          `expected offset ${state.lastOffset + 1}, got ${req.offset}`,
       );
     }
 
@@ -174,9 +165,7 @@ export class InstallSnapshotHandler {
           const fullHash = crypto.createHash('sha256');
           fullHash.update(fullSnapshot);
           const snapshotChecksum = fullHash.digest('hex');
-          logger.info(
-            `[InstallSnapshot] Full snapshot checksum: ${snapshotChecksum} (${fullSnapshot.length} bytes)`,
-          );
+          logger.info(`[InstallSnapshot] Full snapshot checksum: ${snapshotChecksum} (${fullSnapshot.length} bytes)`);
         }
 
         const meta: SnapshotMeta = {
@@ -188,10 +177,7 @@ export class InstallSnapshotHandler {
         };
 
         // Persist snapshot to disk before applying
-        const snapshotFile = path.join(
-          this.config.snapshotDir,
-          `snapshot-${key}-${meta.lastIncludedIndex}.dat`,
-        );
+        const snapshotFile = path.join(this.config.snapshotDir, `snapshot-${key}-${meta.lastIncludedIndex}.dat`);
         fs.writeFileSync(snapshotFile, fullSnapshot);
 
         // Apply snapshot to state machine
@@ -202,13 +188,11 @@ export class InstallSnapshotHandler {
 
         logger.info(
           `[InstallSnapshot] Installed snapshot at index ${meta.lastIncludedIndex} ` +
-          `(term ${meta.lastIncludedTerm}) from leader ${req.leaderId} ` +
-          `(${state.totalBytesReceived} bytes in ${state.chunks.length} chunks)`,
+            `(term ${meta.lastIncludedTerm}) from leader ${req.leaderId} ` +
+            `(${state.totalBytesReceived} bytes in ${state.chunks.length} chunks)`,
         );
       } catch (err: any) {
-        logger.error(
-          `[InstallSnapshot] Failed to install snapshot: ${err.message}`,
-        );
+        logger.error(`[InstallSnapshot] Failed to install snapshot: ${err.message}`);
         this.incomingState.delete(key);
         throw err;
       }
@@ -262,7 +246,7 @@ export class InstallSnapshotHandler {
           checksum = hash.digest('hex');
         }
 
-        const isLast = (offset + thisChunkSize) >= fileSize;
+        const isLast = offset + thisChunkSize >= fileSize;
 
         yield {
           term: Number(meta.lastIncludedTerm),
@@ -280,8 +264,8 @@ export class InstallSnapshotHandler {
 
         logger.debug(
           `[InstallSnapshot] Chunk ${chunkIndex}: offset=${offset - thisChunkSize}, ` +
-          `size=${chunkBuffer.length}, checksum=${checksum.slice(0, 8)}...` +
-          (isLast ? ' (last)' : ''),
+            `size=${chunkBuffer.length}, checksum=${checksum.slice(0, 8)}...` +
+            (isLast ? ' (last)' : ''),
         );
       }
     } finally {
@@ -325,14 +309,14 @@ export class InstallSnapshotHandler {
             to: targetNodeId,
             term: chunk.term,
             snapshot: chunk,
-            ...(chunk as any)._checksum ? { checksum: (chunk as any)._checksum } : {},
+            ...((chunk as any)._checksum ? { checksum: (chunk as any)._checksum } : {}),
           });
           successCount++;
         } catch (err: any) {
           failCount++;
           logger.error(
             `[InstallSnapshot] Failed to send chunk ${successCount + failCount} ` +
-            `to ${targetNodeId}: ${err.message}`,
+              `to ${targetNodeId}: ${err.message}`,
           );
           // Continue with remaining chunks (best-effort)
         }
@@ -340,7 +324,7 @@ export class InstallSnapshotHandler {
 
       logger.info(
         `[InstallSnapshot] Sent snapshot to ${targetNodeId}: ` +
-        `${successCount} chunks ok, ${failCount} failed (${meta.lastIncludedIndex})`,
+          `${successCount} chunks ok, ${failCount} failed (${meta.lastIncludedIndex})`,
       );
 
       return failCount === 0;

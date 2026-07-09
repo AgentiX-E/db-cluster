@@ -51,7 +51,7 @@ interface ShardNode {
 // ──────────────────────────────────────────
 
 function sleep(ms: number): Promise<void> {
-  return new Promise(r => setTimeout(r, ms));
+  return new Promise((r) => setTimeout(r, ms));
 }
 
 async function waitForLeader(
@@ -99,7 +99,7 @@ async function waitForCommitOnAllNodes(
   expectedData: string,
   timeoutMs: number = COMMIT_TIMEOUT_MS,
 ): Promise<void> {
-  await Promise.all(nodes.map(n => waitForCommitOnNode(n, expectedData, timeoutMs)));
+  await Promise.all(nodes.map((n) => waitForCommitOnNode(n, expectedData, timeoutMs)));
 }
 
 function buildPeerConfig(peerIds: number[], ports: number[]) {
@@ -110,10 +110,7 @@ function buildPeerConfig(peerIds: number[], ports: number[]) {
   }));
 }
 
-async function withRetry<T>(
-  fn: () => Promise<T>,
-  opts: { retries: number; delayMs: number },
-): Promise<T> {
+async function withRetry<T>(fn: () => Promise<T>, opts: { retries: number; delayMs: number }): Promise<T> {
   try {
     return await fn();
   } catch (err) {
@@ -168,12 +165,12 @@ describe('Multi-shard Raft cluster', () => {
       const dataDir = createTempDir(`multishard-${shardId}-n${nodeId}-`);
       tempDirs.push(dataDir);
 
-      const otherPeers = peerConfigs.filter(p => p.id !== nodeId);
+      const otherPeers = peerConfigs.filter((p) => p.id !== nodeId);
       const certIndex = nodeLabels ? parseInt(nodeLabels[i].replace('raft-node-', '')) - 1 : nodeId - 1;
 
       const adapter = new RaftAdapter({
         id: nodeId,
-        peers: otherPeers.map(p => p.id),
+        peers: otherPeers.map((p) => p.id),
         electionTick: ELECTION_TICK,
         heartbeatTick: HEARTBEAT_TICK,
         tickIntervalMs: TICK_INTERVAL_MS,
@@ -224,25 +221,23 @@ describe('Multi-shard Raft cluster', () => {
     const shard1Ports = await getFreePorts(3);
 
     // Create shard-0 nodes (IDs 1,2,3)
-    const shard0Nodes = await createShardNodes(
-      'shard-0',
-      SHARD_0_PEER_IDS,
-      shard0Ports,
-      ['raft-node-1', 'raft-node-2', 'raft-node-3'],
-    );
+    const shard0Nodes = await createShardNodes('shard-0', SHARD_0_PEER_IDS, shard0Ports, [
+      'raft-node-1',
+      'raft-node-2',
+      'raft-node-3',
+    ]);
 
     // Create shard-1 nodes (IDs 4,5,6)
-    const shard1Nodes = await createShardNodes(
-      'shard-1',
-      SHARD_1_PEER_IDS,
-      shard1Ports,
-      ['raft-node-4', 'raft-node-5', 'raft-node-6'],
-    );
+    const shard1Nodes = await createShardNodes('shard-1', SHARD_1_PEER_IDS, shard1Ports, [
+      'raft-node-4',
+      'raft-node-5',
+      'raft-node-6',
+    ]);
 
     allNodes.push(...shard0Nodes, ...shard1Nodes);
 
     // Start all adapters in parallel
-    const initPromises = (allNodes as ShardNodeInternal[]).map(n => n._initPromise);
+    const initPromises = (allNodes as ShardNodeInternal[]).map((n) => n._initPromise);
     await Promise.all(initPromises);
 
     // Verify all nodes report as not-leader initially (they're all followers)
@@ -258,13 +253,10 @@ describe('Multi-shard Raft cluster', () => {
   }, 60_000);
 
   it('AC 7.2: Both shards elect leaders within 30 seconds', async () => {
-    const shard0Nodes = allNodes.filter(n => n.shardId === 'shard-0');
-    const shard1Nodes = allNodes.filter(n => n.shardId === 'shard-1');
+    const shard0Nodes = allNodes.filter((n) => n.shardId === 'shard-0');
+    const shard1Nodes = allNodes.filter((n) => n.shardId === 'shard-1');
 
-    const [s0Leader, s1Leader] = await Promise.all([
-      waitForLeader(shard0Nodes),
-      waitForLeader(shard1Nodes),
-    ]);
+    const [s0Leader, s1Leader] = await Promise.all([waitForLeader(shard0Nodes), waitForLeader(shard1Nodes)]);
 
     // Shard-0 leader must be one of {1, 2, 3}
     expect(SHARD_0_PEER_IDS).toContain(s0Leader.leaderId);
@@ -278,25 +270,21 @@ describe('Multi-shard Raft cluster', () => {
     await sleep(2000);
 
     // Check shard-0 consensus on leader
-    const s0Leaders = await Promise.all(
-      shard0Nodes.map(n => n.adapter.getLeader()),
-    );
-    const uniqueS0Leaders = [...new Set(s0Leaders.filter(l => l !== null))];
+    const s0Leaders = await Promise.all(shard0Nodes.map((n) => n.adapter.getLeader()));
+    const uniqueS0Leaders = [...new Set(s0Leaders.filter((l) => l !== null))];
     expect(uniqueS0Leaders.length).toBe(1);
     expect(uniqueS0Leaders[0]).toBe(s0Leader.leaderId);
 
     // Check shard-1 consensus on leader
-    const s1Leaders = await Promise.all(
-      shard1Nodes.map(n => n.adapter.getLeader()),
-    );
-    const uniqueS1Leaders = [...new Set(s1Leaders.filter(l => l !== null))];
+    const s1Leaders = await Promise.all(shard1Nodes.map((n) => n.adapter.getLeader()));
+    const uniqueS1Leaders = [...new Set(s1Leaders.filter((l) => l !== null))];
     expect(uniqueS1Leaders.length).toBe(1);
     expect(uniqueS1Leaders[0]).toBe(s1Leader.leaderId);
   }, 40_000);
 
   it('AC 7.3: Entries proposed to each shard commit on all 3 nodes of that shard', async () => {
-    const shard0Nodes = allNodes.filter(n => n.shardId === 'shard-0');
-    const shard1Nodes = allNodes.filter(n => n.shardId === 'shard-1');
+    const shard0Nodes = allNodes.filter((n) => n.shardId === 'shard-0');
+    const shard1Nodes = allNodes.filter((n) => n.shardId === 'shard-1');
 
     // Find current leaders
     const s0Leader = await waitForLeader(shard0Nodes);
@@ -315,10 +303,7 @@ describe('Multi-shard Raft cluster', () => {
     expect(result1.term).toBeDefined();
 
     // Wait for both entries to commit on all nodes of respective shards
-    await Promise.all([
-      waitForCommitOnAllNodes(shard0Nodes, entry0),
-      waitForCommitOnAllNodes(shard1Nodes, entry1),
-    ]);
+    await Promise.all([waitForCommitOnAllNodes(shard0Nodes, entry0), waitForCommitOnAllNodes(shard1Nodes, entry1)]);
 
     // Verify entries did NOT cross shards
     for (const node of shard0Nodes) {
@@ -333,13 +318,13 @@ describe('Multi-shard Raft cluster', () => {
   }, 40_000);
 
   it('AC 7.4: Propose to wrong leader returns NOT_LEADER', async () => {
-    const shard0Nodes = allNodes.filter(n => n.shardId === 'shard-0');
+    const shard0Nodes = allNodes.filter((n) => n.shardId === 'shard-0');
 
     // Find current leader
     const s0Leader = await waitForLeader(shard0Nodes);
 
     // Pick a non-leader node in shard-0
-    const follower = shard0Nodes.find(n => n.id !== s0Leader.leaderId);
+    const follower = shard0Nodes.find((n) => n.id !== s0Leader.leaderId);
     expect(follower).toBeDefined();
 
     // Propose to follower — should throw NOT_LEADER

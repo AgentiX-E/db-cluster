@@ -30,19 +30,14 @@ import {
 import * as crypto from 'crypto';
 
 import { SqliteStorage } from '../storage/SqliteStorage';
-import { performance } from "node:perf_hooks";
+import { performance } from 'node:perf_hooks';
 
-import {
-  IConsensusLayer,
-  IClusterTopology,
-  TopologyChange,
-} from '../interfaces/interfaces';
+import { IConsensusLayer, IClusterTopology, TopologyChange } from '../interfaces/interfaces';
 
 import { AdaptiveElectionTimeout } from '../opt/AdaptiveElectionTimeout';
 import { AdaptiveElectionConfig, DEFAULT_ADAPTIVE_ELECTION_CONFIG } from '../../interfaces/types';
 import pino from 'pino';
 const logger = pino({ level: process.env.LOG_LEVEL || 'info' });
-
 
 /**
  * Generate a randomized election tick count with jitter.
@@ -65,7 +60,7 @@ function jitteredElectionTick(baseTick: number, tickMs: number, jitterMs: number
 export interface RaftGroupDescriptor {
   shardId: number;
   raftGroupId: string[]; // List of peers: nodeIds
-  localIndex: number;    // Our index within the group
+  localIndex: number; // Our index within the group
 }
 
 /** Health status for a single shard's Raft group. */
@@ -444,16 +439,12 @@ export class RaftGroupManager implements IConsensusLayer {
       // This will fall back to jittered since no RTT data yet
       electionTick = this.getAdaptiveTick(shardId, this.tickMs);
     } else {
-      electionTick = jitteredElectionTick(
-        baseTick,
-        this.tickMs,
-        RaftGroupManager.ELECTION_JITTER_MS,
-      );
+      electionTick = jitteredElectionTick(baseTick, this.tickMs, RaftGroupManager.ELECTION_JITTER_MS);
     }
 
     const raftConfig: RaftConfig = {
       id: localRaftIndex,
-      peers: peers.map(p => p.raftIndex),
+      peers: peers.map((p) => p.raftIndex),
       electionTick,
       heartbeatTick: 2,
       preVote: false,
@@ -523,10 +514,7 @@ export class RaftGroupManager implements IConsensusLayer {
   async pauseShard(shardId: number): Promise<void> {
     const group = this.groups.get(shardId);
     if (!group) {
-      logger.warn(
-        { shardId },
-        '[RaftGroupManager] Cannot pause shard: group not found',
-      );
+      logger.warn({ shardId }, '[RaftGroupManager] Cannot pause shard: group not found');
       return;
     }
 
@@ -534,10 +522,7 @@ export class RaftGroupManager implements IConsensusLayer {
       group.stop();
       logger.info({ shardId }, '[RaftGroupManager] Shard Raft group paused');
     } catch (err: any) {
-      logger.error(
-        { err, shardId },
-        '[RaftGroupManager] Error pausing shard',
-      );
+      logger.error({ err, shardId }, '[RaftGroupManager] Error pausing shard');
       throw err;
     }
   }
@@ -568,10 +553,7 @@ export class RaftGroupManager implements IConsensusLayer {
       await group.init(this.sharedTransport);
       logger.info({ shardId }, '[RaftGroupManager] Shard Raft group resumed');
     } catch (err: any) {
-      logger.error(
-        { err, shardId },
-        '[RaftGroupManager] Error resuming shard',
-      );
+      logger.error({ err, shardId }, '[RaftGroupManager] Error resuming shard');
       throw err;
     }
   }
@@ -612,7 +594,7 @@ export class RaftGroupManager implements IConsensusLayer {
         if (!group) break;
         const leaderId = await group.getLeader();
         if (leaderId !== null && leaderId !== undefined) break; // leader elected
-        await new Promise(r => setTimeout(r, 100));
+        await new Promise((r) => setTimeout(r, 100));
       }
       // Final check
       const group = this.groups.get(shardId);
@@ -647,16 +629,15 @@ export class RaftGroupManager implements IConsensusLayer {
     if (!state) return;
 
     if (state.attempt >= this.reconnectConfig.maxRetries) {
-      logger.error(`[RaftGroupManager] Peer ${peerId} max reconnect attempts (${this.reconnectConfig.maxRetries}) reached`);
+      logger.error(
+        `[RaftGroupManager] Peer ${peerId} max reconnect attempts (${this.reconnectConfig.maxRetries}) reached`,
+      );
       this.peerReconnectState.delete(peerId);
       return;
     }
 
     // Exponential backoff: base * 2^attempt, capped at maxMs
-    const delay = Math.min(
-      this.reconnectConfig.baseMs * Math.pow(2, state.attempt),
-      this.reconnectConfig.maxMs,
-    );
+    const delay = Math.min(this.reconnectConfig.baseMs * Math.pow(2, state.attempt), this.reconnectConfig.maxMs);
 
     state.attempt++;
     state.timer = setTimeout(async () => {
@@ -821,7 +802,8 @@ export class RaftGroupManager implements IConsensusLayer {
       // Only retry if getLeader() returns null (election still in progress).
       const selfLeaderId = await group.getLeader();
       if (selfLeaderId !== null && selfLeaderId !== undefined) {
-        const isUs = this.peerPgPorts.has(selfLeaderId) && this.peerPgPorts.get(selfLeaderId)!.port === this.localPgPort;
+        const isUs =
+          this.peerPgPorts.has(selfLeaderId) && this.peerPgPorts.get(selfLeaderId)!.port === this.localPgPort;
         if (isUs) {
           // We ARE the leader — propose directly
           await group.propose(valueOrEntry);
@@ -832,10 +814,11 @@ export class RaftGroupManager implements IConsensusLayer {
       } else {
         // getLeader() returned null — election in progress. Retry brief.
         for (let retry = 0; retry < 5; retry++) {
-          await new Promise(r => setTimeout(r, 10));
+          await new Promise((r) => setTimeout(r, 10));
           const retryLeaderId = await group.getLeader();
           if (retryLeaderId !== null && retryLeaderId !== undefined) {
-            const isUs = this.peerPgPorts.has(retryLeaderId) && this.peerPgPorts.get(retryLeaderId)!.port === this.localPgPort;
+            const isUs =
+              this.peerPgPorts.has(retryLeaderId) && this.peerPgPorts.get(retryLeaderId)!.port === this.localPgPort;
             if (isUs) {
               await group.propose(valueOrEntry);
               return;
@@ -856,9 +839,11 @@ export class RaftGroupManager implements IConsensusLayer {
     await group.propose(valueOrEntry);
     const tP4 = performance.now();
     const proposeMs = performance.now() - proposeStart;
-    if (proposeMs > 2 || (tP1 - tP0) > 1 || (tP4 - tP3) > 10) {
+    if (proposeMs > 2 || tP1 - tP0 > 1 || tP4 - tP3 > 10) {
       const ts = new Date().toISOString().slice(11, 23);
-      process.stdout.write(`[RAFT-PROPOSE] ${ts} shard=${shardId} getGroup=${(tP1-tP0).toFixed(0)}ms isLeader=${(tP2-tP1).toFixed(0)}ms propose=${(tP4-tP3).toFixed(0)}ms total=${proposeMs.toFixed(0)}ms\n`);
+      process.stdout.write(
+        `[RAFT-PROPOSE] ${ts} shard=${shardId} getGroup=${(tP1 - tP0).toFixed(0)}ms isLeader=${(tP2 - tP1).toFixed(0)}ms propose=${(tP4 - tP3).toFixed(0)}ms total=${proposeMs.toFixed(0)}ms\n`,
+      );
     }
     if (proposeMs > 2) {
       const ts = new Date().toISOString().slice(11, 23);
@@ -882,7 +867,7 @@ export class RaftGroupManager implements IConsensusLayer {
       // but leader election is async after group.init(). Busy-wait up to
       // 500ms for the leader election to finish before forwarding.
       for (let retry = 0; retry < 50; retry++) {
-        await new Promise(r => setTimeout(r, 10));
+        await new Promise((r) => setTimeout(r, 10));
         if (await group.isLeader()) {
           await group.proposeAndWait(entry);
           return;
@@ -892,7 +877,12 @@ export class RaftGroupManager implements IConsensusLayer {
       // the Raft state machine has elected us but the isLeader() flag
       // is stale. Propose directly.
       const selfLeaderIdPw = await group.getLeader();
-      if (selfLeaderIdPw !== null && selfLeaderIdPw !== undefined && this.peerPgPorts.has(selfLeaderIdPw) && this.peerPgPorts.get(selfLeaderIdPw)!.port === this.localPgPort) {
+      if (
+        selfLeaderIdPw !== null &&
+        selfLeaderIdPw !== undefined &&
+        this.peerPgPorts.has(selfLeaderIdPw) &&
+        this.peerPgPorts.get(selfLeaderIdPw)!.port === this.localPgPort
+      ) {
         await group.proposeAndWait(entry);
         return;
       }
@@ -916,14 +906,22 @@ export class RaftGroupManager implements IConsensusLayer {
   private async batchAndWait(shardId: number, entry: any): Promise<void> {
     // 1. Push to buffer
     let buffer = this._batchBuffers.get(shardId);
-    if (!buffer) { buffer = []; this._batchBuffers.set(shardId, buffer); }
+    if (!buffer) {
+      buffer = [];
+      this._batchBuffers.set(shardId, buffer);
+    }
     buffer.push(entry);
 
     // 2. Register waiter
     let resolveWaiter!: () => void;
-    const waiter = new Promise<void>((resolve) => { resolveWaiter = resolve; });
+    const waiter = new Promise<void>((resolve) => {
+      resolveWaiter = resolve;
+    });
     let waiters = this._batchWaiters.get(shardId);
-    if (!waiters) { waiters = []; this._batchWaiters.set(shardId, waiters); }
+    if (!waiters) {
+      waiters = [];
+      this._batchWaiters.set(shardId, waiters);
+    }
     waiters.push(resolveWaiter);
 
     // 3. Flush if full, or schedule safety-net timer
@@ -972,7 +970,11 @@ export class RaftGroupManager implements IConsensusLayer {
     if (this._batchTimer) return;
     this._batchTimer = setTimeout(async () => {
       this._batchTimer = null;
-      try { await this.flushAllBatches(); } catch { /* retry on next INSERT */ }
+      try {
+        await this.flushAllBatches();
+      } catch {
+        /* retry on next INSERT */
+      }
     }, RaftGroupManager.BATCH_FLUSH_MS);
   }
 
@@ -1048,7 +1050,9 @@ export class RaftGroupManager implements IConsensusLayer {
 
     const pgAddr = this.peerPgPorts.get(leaderId);
     if (!pgAddr) {
-      throw new Error(`This node is not the Raft leader for shard ${shardId} (unknown PG address for raft index ${leaderId})`);
+      throw new Error(
+        `This node is not the Raft leader for shard ${shardId} (unknown PG address for raft index ${leaderId})`,
+      );
     }
 
     // ── Self-leader guard ────────────────────────────────────────────
@@ -1060,7 +1064,7 @@ export class RaftGroupManager implements IConsensusLayer {
 
     // Forward to leader's PG port with marker to prevent cascade
     const { Client } = require('pg');
-    
+
     // Reuse pooled PG connection (avoids TCP handshake + PG auth per query)
     let poolEntry = this.pgClientPool.get(pgAddr.port);
     if (!poolEntry || !this.pgPoolConnected.has(pgAddr.port)) {
@@ -1078,7 +1082,10 @@ export class RaftGroupManager implements IConsensusLayer {
       });
 
       client.on('error', (err: Error) => {
-        logger.warn({ err, host: pgAddr.host, port: pgAddr.port }, 'Internal PG client connection error during auto-forward');
+        logger.warn(
+          { err, host: pgAddr.host, port: pgAddr.port },
+          'Internal PG client connection error during auto-forward',
+        );
         this.pgPoolConnected.delete(pgAddr.port);
       });
 
@@ -1178,10 +1185,7 @@ export class RaftGroupManager implements IConsensusLayer {
     if (isLeader) {
       // Leader: linearizable read with readBarrier
       const rows = await group.read(sql, params);
-      const quorumResult = group.isReadQuorumReached(
-        group.flexQuorum.commitQuorum,
-        group.flexQuorum.commitQuorum,
-      );
+      const quorumResult = group.isReadQuorumReached(group.flexQuorum.commitQuorum, group.flexQuorum.commitQuorum);
       return { rows, quorumResult };
     }
 
@@ -1214,9 +1218,8 @@ export class RaftGroupManager implements IConsensusLayer {
     // G4: Attempt RTT measurement on AppendEntries responses
     if (this.adaptiveElectionTimeoutEnabled && msg && typeof msg.msgType === 'number') {
       const now = Date.now();
-      const peerId = typeof msg.from === 'number' ? String(msg.from)
-        : typeof msg.from === 'string' ? msg.from
-        : undefined;
+      const peerId =
+        typeof msg.from === 'number' ? String(msg.from) : typeof msg.from === 'string' ? msg.from : undefined;
 
       // AppendEntries response (msgType=4) or Heartbeat response (msgType=9)
       if ((msg.msgType === 4 || msg.msgType === 9) && peerId !== undefined) {
@@ -1352,7 +1355,7 @@ export class RaftGroupManager implements IConsensusLayer {
       const config = this.groupConfigs.get(shardId);
       const peers: number[] = config?.peers ?? [];
       // Filter out self from the peer list
-      const connectedPeers = peers.filter(p => p !== config?.id);
+      const connectedPeers = peers.filter((p) => p !== config?.id);
       results.push({
         shardId,
         peers: connectedPeers,
@@ -1439,10 +1442,7 @@ export class RaftGroupManager implements IConsensusLayer {
 
   async notifyTopologyChange(change: TopologyChange): Promise<void>;
 
-  async notifyTopologyChange(
-    arg1: any,
-    arg2?: any,
-  ): Promise<any> {
+  async notifyTopologyChange(arg1: any, arg2?: any): Promise<any> {
     // Two-argument call: old-style (peers, localRaftIndex)
     if (arg2 !== undefined) {
       return this._applyTopologyChange(arg1, arg2);
@@ -1527,8 +1527,8 @@ export class RaftGroupManager implements IConsensusLayer {
   ): Promise<Map<number, { success: boolean; phase: RaftConsensusPhase; error?: string }>> {
     const results = new Map<number, { success: boolean; phase: RaftConsensusPhase; error?: string }>();
 
-    const allPeerIds = peers.map(p => p.nodeId);
-    const peerIndices = peers.map(p => p.raftIndex);
+    const allPeerIds = peers.map((p) => p.nodeId);
+    const peerIndices = peers.map((p) => p.raftIndex);
 
     for (const [shardId, group] of this.groups) {
       // Get current group peers
@@ -1555,9 +1555,7 @@ export class RaftGroupManager implements IConsensusLayer {
           phase: RaftConsensusPhase.NORMAL,
           error: err.message,
         });
-        logger.error(
-          `[RaftGroupManager] Shard ${shardId} membership change error: ${err.message}`,
-        );
+        logger.error(`[RaftGroupManager] Shard ${shardId} membership change error: ${err.message}`);
       }
     }
 
@@ -1757,15 +1755,15 @@ export class RaftGroupManager implements IConsensusLayer {
     }>;
   }> {
     const groups = await this.getLeaderHealthStatus();
-    const healthyGroups = groups.filter(g => g.healthy);
-    const leaderCount = groups.filter(g => g.leaderId !== null).length;
+    const healthyGroups = groups.filter((g) => g.healthy);
+    const leaderCount = groups.filter((g) => g.leaderId !== null).length;
 
     return {
       totalGroups: groups.length,
       healthyGroups: healthyGroups.length,
       unhealthyGroups: groups.length - healthyGroups.length,
       leaderCount,
-      groups: groups.map(g => ({
+      groups: groups.map((g) => ({
         shardId: g.shardId,
         healthy: g.healthy,
         leaderId: g.leaderId,
@@ -1809,9 +1807,7 @@ export class RaftGroupManager implements IConsensusLayer {
    * @param event - Event name 'leader-change'
    * @param cb - Callback receiving (nodeId: string, term: number, shardId: number)
    */
-  onLeaderChange(
-    cb: (nodeId: string, term: number, shardId: number) => void,
-  ): void {
+  onLeaderChange(cb: (nodeId: string, term: number, shardId: number) => void): void {
     this.eventEmitter.on('leader-change', cb);
   }
 
@@ -1823,9 +1819,7 @@ export class RaftGroupManager implements IConsensusLayer {
    * @param event - Event name 'cluster-topology-change'
    * @param cb - Callback receiving (nodes: string[])
    */
-  onClusterTopologyChange(
-    cb: (nodes: string[]) => void,
-  ): void {
+  onClusterTopologyChange(cb: (nodes: string[]) => void): void {
     this.eventEmitter.on('cluster-topology-change', cb);
   }
 
@@ -1838,36 +1832,28 @@ export class RaftGroupManager implements IConsensusLayer {
    * @param event - Event name 'health-change'
    * @param cb - Callback receiving (nodeId: string, healthy: boolean, shardId: number)
    */
-  onHealthChange(
-    cb: (nodeId: string, healthy: boolean, shardId: number) => void,
-  ): void {
+  onHealthChange(cb: (nodeId: string, healthy: boolean, shardId: number) => void): void {
     this.eventEmitter.on('health-change', cb);
   }
 
   /**
    * Remove a leader-change callback.
    */
-  offLeaderChange(
-    cb: (nodeId: string, term: number, shardId: number) => void,
-  ): void {
+  offLeaderChange(cb: (nodeId: string, term: number, shardId: number) => void): void {
     this.eventEmitter.off('leader-change', cb);
   }
 
   /**
    * Remove a cluster-topology-change callback.
    */
-  offClusterTopologyChange(
-    cb: (nodes: string[]) => void,
-  ): void {
+  offClusterTopologyChange(cb: (nodes: string[]) => void): void {
     this.eventEmitter.off('cluster-topology-change', cb);
   }
 
   /**
    * Remove a health-change callback.
    */
-  offHealthChange(
-    cb: (nodeId: string, healthy: boolean, shardId: number) => void,
-  ): void {
+  offHealthChange(cb: (nodeId: string, healthy: boolean, shardId: number) => void): void {
     this.eventEmitter.off('health-change', cb);
   }
 

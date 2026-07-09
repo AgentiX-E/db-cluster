@@ -32,11 +32,11 @@ function createMockTopology(nodeId = 'node-1', peerIds = ['node-2', 'node-3']): 
 
 function createMockConsensusLayer(
   overrides: Partial<{
-    getLeader: (shardId: string) => string | null,
-    isLeader: (shardId: string) => boolean,
-    getCommitIndex: (shardId: string) => number,
-    getHealthStatus: () => any[],
-    notifyTopologyChange: (change: any) => void,
+    getLeader: (shardId: string) => string | null;
+    isLeader: (shardId: string) => boolean;
+    getCommitIndex: (shardId: string) => number;
+    getHealthStatus: () => any[];
+    notifyTopologyChange: (change: any) => void;
   }> = {},
 ): IConsensusLayer {
   const defaults = {

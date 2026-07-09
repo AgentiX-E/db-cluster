@@ -41,81 +41,93 @@ describe('Raft Chaos Engineering', () => {
   //
   // AC 30.1: Leader kill → new election, no split-brain
   //
-  it('AC 30.1: Leader kill triggers new election (no split-brain)', async () => {
-    await cluster.start();
+  it(
+    'AC 30.1: Leader kill triggers new election (no split-brain)',
+    async () => {
+      await cluster.start();
 
-    const leaderNode = await cluster.findLeader();
-    const leaderId = leaderNode.id;
+      const leaderNode = await cluster.findLeader();
+      const leaderId = leaderNode.id;
 
-    // Kill leader
-    await cluster.killNode(leaderId);
+      // Kill leader
+      await cluster.killNode(leaderId);
 
-    // Remaining nodes must elect a new leader
-    const remaining = cluster.remainingNodes(leaderId);
-    const newLeader = await cluster.waitForNewLeader(leaderId);
+      // Remaining nodes must elect a new leader
+      const remaining = cluster.remainingNodes(leaderId);
+      const newLeader = await cluster.waitForNewLeader(leaderId);
 
-    // Verify exactly one leader among remaining
-    let leaderCount = 0;
-    for (const n of remaining) {
-      if (await n.adapter.isLeader()) leaderCount++;
-    }
-    expect(leaderCount).toBe(1);
-    expect(newLeader.id).not.toBe(leaderId);
+      // Verify exactly one leader among remaining
+      let leaderCount = 0;
+      for (const n of remaining) {
+        if (await n.adapter.isLeader()) leaderCount++;
+      }
+      expect(leaderCount).toBe(1);
+      expect(newLeader.id).not.toBe(leaderId);
 
-    // Verify new leader's term exists
-    const newTerm = await newLeader.adapter.getTerm();
-    expect(newTerm).toBeGreaterThan(0);
+      // Verify new leader's term exists
+      const newTerm = await newLeader.adapter.getTerm();
+      expect(newTerm).toBeGreaterThan(0);
 
-    process.stdout.write(`\n  [Leader failover] ${leaderId} → ${newLeader.id} term=${newTerm}\n`);
-  }, CHAOS_TIMEOUT);
+      process.stdout.write(`\n  [Leader failover] ${leaderId} → ${newLeader.id} term=${newTerm}\n`);
+    },
+    CHAOS_TIMEOUT,
+  );
 
   //
   // AC 30.2: Follower kill → leader still commits
   //
-  it('AC 30.2: Follower kill does not block leader commits', async () => {
-    await cluster.start();
+  it(
+    'AC 30.2: Follower kill does not block leader commits',
+    async () => {
+      await cluster.start();
 
-    const leaderNode = await cluster.findLeader();
-    const leaderId = leaderNode.id;
-    const follower = cluster.nodes.find(n => n.id !== leaderId)!;
+      const leaderNode = await cluster.findLeader();
+      const leaderId = leaderNode.id;
+      const follower = cluster.nodes.find((n) => n.id !== leaderId)!;
 
-    // Kill one follower (quorum: 2/3 survives)
-    await cluster.killNode(follower.id);
+      // Kill one follower (quorum: 2/3 survives)
+      await cluster.killNode(follower.id);
 
-    // Leader can still commit with 2 nodes (self + 1 follower)
-    await leaderNode.adapter.propose('survivor-commit');
+      // Leader can still commit with 2 nodes (self + 1 follower)
+      await leaderNode.adapter.propose('survivor-commit');
 
-    const survivor = cluster.nodes.find(n => n.id !== leaderId)!;
-    const progress = await survivor.adapter.getProgress();
-    expect(progress.commit).toBeGreaterThanOrEqual(1);
+      const survivor = cluster.nodes.find((n) => n.id !== leaderId)!;
+      const progress = await survivor.adapter.getProgress();
+      expect(progress.commit).toBeGreaterThanOrEqual(1);
 
-    process.stdout.write(`\n  [Minority tolerance] Entry committed (commit=${progress.commit}) with 1/3 down\n`);
-  }, CHAOS_TIMEOUT);
+      process.stdout.write(`\n  [Minority tolerance] Entry committed (commit=${progress.commit}) with 1/3 down\n`);
+    },
+    CHAOS_TIMEOUT,
+  );
 
   //
   // AC 30.3: Leader flapping → monotonic term progression
   //
-  it('AC 30.3: Leader failover → monotonic term progression', async () => {
-    await cluster.start();
+  it(
+    'AC 30.3: Leader failover → monotonic term progression',
+    async () => {
+      await cluster.start();
 
-    const terms: number[] = [];
-    const leaderNode = await cluster.findLeader();
-    const leaderId = leaderNode.id;
+      const terms: number[] = [];
+      const leaderNode = await cluster.findLeader();
+      const leaderId = leaderNode.id;
 
-    const currentTerm = await leaderNode.adapter.getTerm();
-    terms.push(currentTerm);
+      const currentTerm = await leaderNode.adapter.getTerm();
+      terms.push(currentTerm);
 
-    await cluster.killNode(leaderId);
+      await cluster.killNode(leaderId);
 
-    const newLeader = await cluster.waitForNewLeader(leaderId);
-    const newTerm = await newLeader.adapter.getTerm();
-    terms.push(newTerm);
+      const newLeader = await cluster.waitForNewLeader(leaderId);
+      const newTerm = await newLeader.adapter.getTerm();
+      terms.push(newTerm);
 
-    process.stdout.write(`\n  [Failover] L=${leaderId} → ${newLeader.id} term=${currentTerm} → ${newTerm}`);
+      process.stdout.write(`\n  [Failover] L=${leaderId} → ${newLeader.id} term=${currentTerm} → ${newTerm}`);
 
-    for (let i = 1; i < terms.length; i++) {
-      expect(terms[i]).toBeGreaterThanOrEqual(terms[i - 1]);
-    }
-    process.stdout.write('\n');
-  }, CHAOS_TIMEOUT);
+      for (let i = 1; i < terms.length; i++) {
+        expect(terms[i]).toBeGreaterThanOrEqual(terms[i - 1]);
+      }
+      process.stdout.write('\n');
+    },
+    CHAOS_TIMEOUT,
+  );
 });

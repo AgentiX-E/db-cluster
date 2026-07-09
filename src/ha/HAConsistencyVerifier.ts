@@ -78,9 +78,7 @@ export class HAConsistencyVerifier {
       }
 
       // Filter for the specific shard
-      const shardHealths = healthStatus.filter(
-        (h: any) => String(h.shardId) === shardId,
-      );
+      const shardHealths = healthStatus.filter((h: any) => String(h.shardId) === shardId);
 
       if (shardHealths.length === 0) {
         // Only local info available — limited check
@@ -128,10 +126,7 @@ export class HAConsistencyVerifier {
         details: `Shard ${shardId} is consistent. commitIndex=${localCommitIndex}, leader=${localLeader}, replicas=${commitIndices.length}`,
       };
     } catch (err: any) {
-      logger.error(
-        { err, shardId },
-        'Failed to verify consistency',
-      );
+      logger.error({ err, shardId }, 'Failed to verify consistency');
       return {
         consistent: false,
         details: `Error verifying consistency: ${err.message}`,
@@ -171,10 +166,7 @@ export class HAConsistencyVerifier {
     const startTime = Date.now();
 
     try {
-      logger.info(
-        { newLeaderId, shardId },
-        'Verifying consistency of new leader after failover',
-      );
+      logger.info({ newLeaderId, shardId }, 'Verifying consistency of new leader after failover');
 
       // ── Resolve consensus layer: explicit param > instance > null ─────
       const cl = consensusLayer ?? this.consensusLayer;
@@ -184,7 +176,7 @@ export class HAConsistencyVerifier {
         logger.warn(
           { newLeaderId, shardId },
           'No IConsensusLayer available — skipping real consistency checks. ' +
-          'Returning true (best-effort). Provide a consensusLayer for proper verification.',
+            'Returning true (best-effort). Provide a consensusLayer for proper verification.',
         );
         return true;
       }
@@ -204,7 +196,7 @@ export class HAConsistencyVerifier {
         logger.error({ err, shardId }, 'Failed to query leader identity');
         throw new Error(
           `[HAConsistencyVerifier] Cannot verify new leader consistency for shard ${shardId}: ` +
-          `consensus layer error when querying leader: ${err.message}`,
+            `consensus layer error when querying leader: ${err.message}`,
         );
       }
 
@@ -224,7 +216,7 @@ export class HAConsistencyVerifier {
         );
         throw new Error(
           `[HAConsistencyVerifier] New leader identity check FAILED for shard ${shardId}: ` +
-          `expected leader="${newLeaderId}", actual leader="${actualLeader ?? 'null'}"`,
+            `expected leader="${newLeaderId}", actual leader="${actualLeader ?? 'null'}"`,
         );
       }
 
@@ -240,16 +232,15 @@ export class HAConsistencyVerifier {
           passed: false,
           detail: `Failed to query commit index: ${err.message}`,
         });
-        throw new Error(
-          `[HAConsistencyVerifier] Cannot query commit index for shard ${shardId}: ${err.message}`,
-        );
+        throw new Error(`[HAConsistencyVerifier] Cannot query commit index for shard ${shardId}: ${err.message}`);
       }
 
       const hasCommits = commitIndex >= 0;
       checks.push({
         name: 'commit-progress',
         passed: true,
-        detail: `Leader commitIndex=${commitIndex} for shard ${shardId}` +
+        detail:
+          `Leader commitIndex=${commitIndex} for shard ${shardId}` +
           (commitIndex === 0 ? ' (no committed entries yet — acceptable on fresh shard)' : ''),
       });
 
@@ -268,13 +259,18 @@ export class HAConsistencyVerifier {
 
         if (regressed) {
           logger.error(
-            { shardId, preFailoverCommitIndex, postFailoverCommitIndex: commitIndex, gap: preFailoverCommitIndex - commitIndex },
+            {
+              shardId,
+              preFailoverCommitIndex,
+              postFailoverCommitIndex: commitIndex,
+              gap: preFailoverCommitIndex - commitIndex,
+            },
             'Commit index regression detected after failover — committed entries may have been lost!',
           );
           throw new Error(
             `[HAConsistencyVerifier] Commit index regression detected after failover for shard ${shardId}: ` +
-            `pre-failover commitIndex=${preFailoverCommitIndex}, post-failover commitIndex=${commitIndex}. ` +
-            `Lost ${preFailoverCommitIndex - commitIndex} committed entries!`,
+              `pre-failover commitIndex=${preFailoverCommitIndex}, post-failover commitIndex=${commitIndex}. ` +
+              `Lost ${preFailoverCommitIndex - commitIndex} committed entries!`,
           );
         }
       } else {
@@ -306,9 +302,7 @@ export class HAConsistencyVerifier {
 
       if (healthStatus.length > 0) {
         // Filter for the target shard (all replicas on this node)
-        const shardHealths = healthStatus.filter(
-          (h: any) => String(h.shardId) === shardId,
-        );
+        const shardHealths = healthStatus.filter((h: any) => String(h.shardId) === shardId);
 
         if (shardHealths.length > 1) {
           // Multiple replicas on the same shard — compare their progress
@@ -357,8 +351,8 @@ export class HAConsistencyVerifier {
             );
             throw new Error(
               `[HAConsistencyVerifier] Cross-replica consistency check FAILED for shard ${shardId}: ` +
-              `commitIndex divergence=${commitGap}, lastLogIndex divergence=${logGap}. ` +
-              `Replicas: ${JSON.stringify(replicas)}`,
+                `commitIndex divergence=${commitGap}, lastLogIndex divergence=${logGap}. ` +
+                `Replicas: ${JSON.stringify(replicas)}`,
             );
           }
         } else {
@@ -366,9 +360,10 @@ export class HAConsistencyVerifier {
           checks.push({
             name: 'cross-replica-consistency',
             passed: true,
-            detail: shardHealths.length === 0
-              ? `No other replicas found for shard ${shardId} in local health status — single-node view only`
-              : `Only 1 local replica for shard ${shardId} — cross-replica check limited to local view`,
+            detail:
+              shardHealths.length === 0
+                ? `No other replicas found for shard ${shardId} in local health status — single-node view only`
+                : `Only 1 local replica for shard ${shardId} — cross-replica check limited to local view`,
           });
         }
       }
@@ -394,10 +389,7 @@ export class HAConsistencyVerifier {
           `New leader consistency verified: ${result.summary}`,
         );
       } else {
-        logger.warn(
-          { newLeaderId, shardId, result },
-          `New leader consistency check FAILED`,
-        );
+        logger.warn({ newLeaderId, shardId, result }, `New leader consistency check FAILED`);
       }
 
       return allPassed;

@@ -52,7 +52,6 @@ import type { CircuitBreakerMetric } from '../opt/CircuitBreaker';
 import pino from 'pino';
 const logger = pino({ level: process.env.LOG_LEVEL || 'info' });
 
-
 // NodeTransportConfig reuses RaftTcpTransportConfig; no additional fields needed.
 export type NodeTransportConfig = RaftTcpTransportConfig;
 

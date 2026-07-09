@@ -32,13 +32,13 @@ const logger = pino({ level: process.env.LOG_LEVEL || 'info' });
 //  Constants (raft_kv keys)
 // ──────────────────────────────────────────
 
-const KV_META_TERM    = 'node_term';
+const KV_META_TERM = 'node_term';
 const KV_META_VOTEDFOR = 'node_voted_for';
-const KV_SNAP_INDEX    = 'snapshot_index';
-const KV_SNAP_TERM     = 'snapshot_term';
-const KV_SNAP_DATA     = 'snapshot_data';
-const KV_SNAP_CONFIG   = 'snapshot_config';
-const KV_CONFIG_VOTERS  = 'config_voters';
+const KV_SNAP_INDEX = 'snapshot_index';
+const KV_SNAP_TERM = 'snapshot_term';
+const KV_SNAP_DATA = 'snapshot_data';
+const KV_SNAP_CONFIG = 'snapshot_config';
+const KV_CONFIG_VOTERS = 'config_voters';
 const KV_CONFIG_LEARNERS = 'config_learners';
 
 // ──────────────────────────────────────────
@@ -140,7 +140,7 @@ export class SqliteLogStorage implements LogStorage {
 
   async getEntries(from: number, to: number): Promise<LogEntry[]> {
     const rows = this.sqlite.getLogEntries(from, to + 1); // SqliteStorage hi is exclusive, raft-core to is inclusive
-    return rows.map(r => this.rowToLogEntry(r));
+    return rows.map((r) => this.rowToLogEntry(r));
   }
 
   async truncateFrom(index: number): Promise<void> {
@@ -225,10 +225,15 @@ export class SqliteSnapshotStorage implements SnapshotStorage {
     this.sqlite.setKv(KV_SNAP_INDEX, Buffer.from(String(snapshot.lastIncludedIndex)));
     this.sqlite.setKv(KV_SNAP_TERM, Buffer.from(String(snapshot.lastIncludedTerm)));
     this.sqlite.setKv(KV_SNAP_DATA, snapshot.data);
-    this.sqlite.setKv(KV_SNAP_CONFIG, Buffer.from(JSON.stringify({
-      voters: snapshot.config.voters,
-      learners: snapshot.config.learners,
-    })));
+    this.sqlite.setKv(
+      KV_SNAP_CONFIG,
+      Buffer.from(
+        JSON.stringify({
+          voters: snapshot.config.voters,
+          learners: snapshot.config.learners,
+        }),
+      ),
+    );
   }
 
   async load(): Promise<Snapshot | null> {

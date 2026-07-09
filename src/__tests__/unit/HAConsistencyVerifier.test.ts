@@ -136,9 +136,7 @@ describe('HAConsistencyVerifier — Unit', () => {
       getLeader: () => 'node-2', // Consensus says node-2 is leader
     });
     const verifier = new HAConsistencyVerifier();
-    await expect(
-      verifier.verifyNewLeaderConsistency('node-1', 's0', consensus),
-    ).rejects.toThrow(/leader/);
+    await expect(verifier.verifyNewLeaderConsistency('node-1', 's0', consensus)).rejects.toThrow(/leader/);
   });
 
   //
@@ -162,9 +160,7 @@ describe('HAConsistencyVerifier — Unit', () => {
       getCommitIndex: () => 10, // Now only 10 (regressed from 100)
     });
     const verifier = new HAConsistencyVerifier();
-    await expect(
-      verifier.verifyNewLeaderConsistency('node-1', 's0', consensus, 100),
-    ).rejects.toThrow(/regression/);
+    await expect(verifier.verifyNewLeaderConsistency('node-1', 's0', consensus, 100)).rejects.toThrow(/regression/);
   });
 
   //
@@ -199,9 +195,7 @@ describe('HAConsistencyVerifier — Unit', () => {
   //
   it('AC 16.10: verifyNewLeaderConsistency — single-node health view passes', async () => {
     const consensus = createMockConsensusLayer({
-      getHealthStatus: () => [
-        { shardId: 's0', nodeId: 'node-1', isLeader: true, commitIndex: 42, lastLogIndex: 42 },
-      ],
+      getHealthStatus: () => [{ shardId: 's0', nodeId: 'node-1', isLeader: true, commitIndex: 42, lastLogIndex: 42 }],
     });
     const verifier = new HAConsistencyVerifier();
     const result = await verifier.verifyNewLeaderConsistency('node-1', 's0', consensus);
@@ -232,7 +226,9 @@ describe('HAConsistencyVerifier — Unit', () => {
   //
   it('AC 16.13: verifyConsistency — returns false on getCommitIndex error', async () => {
     const consensus = createMockConsensusLayer({
-      getCommitIndex: () => { throw new Error('storage error'); },
+      getCommitIndex: () => {
+        throw new Error('storage error');
+      },
     });
     const verifier = new HAConsistencyVerifier();
     const result = await verifier.verifyConsistency('s0', consensus);
@@ -246,11 +242,12 @@ describe('HAConsistencyVerifier — Unit', () => {
   it('AC 16.14: verifyNewLeaderConsistency — health status error returns false', async () => {
     // Health status failure is non-fatal (no [HAConsistencyVerifier] prefix in error)
     const consensus = createMockConsensusLayer({
-      getHealthStatus: () => { throw new Error('health endpoint unavailable'); },
+      getHealthStatus: () => {
+        throw new Error('health endpoint unavailable');
+      },
     });
     const verifier = new HAConsistencyVerifier();
-    await expect(verifier.verifyNewLeaderConsistency('node-1', 's0', consensus, 40))
-      .resolves.toBe(true); // Health status failure is logged as warning, not fatal
+    await expect(verifier.verifyNewLeaderConsistency('node-1', 's0', consensus, 40)).resolves.toBe(true); // Health status failure is logged as warning, not fatal
   });
 
   //
