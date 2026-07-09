@@ -1,6 +1,5 @@
 // Consensus
-export { IConsensusLayer } from './interfaces/consensus/IConsensusLayer';
-export { RaftGroupConfig, RaftGroupState } from './interfaces/consensus/RaftGroupConfig';
+export { IConsensusLayer, TopologyChange, IClusterTopology, IOutboxWriter } from './consensus/interfaces/interfaces';
 
 // Write-Ahead Log
 export { IWalStorage } from './interfaces/wal/IWalStorage';

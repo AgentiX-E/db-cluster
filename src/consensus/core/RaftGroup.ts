@@ -246,11 +246,13 @@ export class RaftGroup {
     // Inbound routing is handled centrally by RaftGroupManager via
     // NodeTransport.onMessage → handleRaftMessage — no per-group handler needed.
     if (sharedTransport) {
-      // Create a per-shard wrapper for outgoing messages
-      const shardTransport = sharedTransport.forShard
-        ? sharedTransport.forShard(this.shardId)
-        : sharedTransport;
-      await this.raft.init(applyHandler, undefined, shardTransport as any);
+      // Pass the ORIGINAL NodeTransport (NOT forShard wrapper) to RaftAdapter.
+      // SharedBatchedTransport will handle per-shard message tagging internally
+      // via its own doSend() and onMessage() registration.
+      await this.raft.init(applyHandler, undefined, {
+        transport: sharedTransport,
+        shardId: this.shardId,
+      });
     } else {
       await this.raft.init(applyHandler);
     }
@@ -694,9 +696,8 @@ export class RaftGroup {
   /**
    * Transfer leadership to a target node.
    *
-   * Tries direct transferLeadership if the underlying RaftNode supports it
-   * (direct @maboke123/raft-core RaftNode call). Falls back to transferLeadershipViaCampaign
-   * for @maboke123/raft-core which does not expose transferLeadership directly.
+   * Delegates to RaftAdapter.transferLeadership which handles the
+   * @maboke123/raft-core interaction (stop heartbeat → wait for election).
    */
   async transferLeadership(targetNodeId: string): Promise<LeaderTransferResult> {
     if (this.leaderTransferInProgress) {
@@ -717,19 +718,12 @@ export class RaftGroup {
       };
     }
 
-    // Check if the underlying RaftNode supports transferLeadership
-    const raftNode = (this.raft as any).node;
-    if (!raftNode || typeof raftNode.transferLeadership !== 'function') {
-      // Not available — use campaign-based fallback
-      return this.transferLeadershipViaCampaign(targetNodeId);
-    }
-
     const startTime = Date.now();
     this.leaderTransferInProgress = true;
 
     try {
-      const targetId = Number(targetNodeId); // RaftNode uses number IDs internally
-      await raftNode.transferLeadership(targetId, 10_000);
+      // Delegate to the RaftAdapter which handles the @maboke123/raft-core interaction
+      await this.raft.transferLeadership(targetNodeId);
 
       const durationMs = Date.now() - startTime;
 
@@ -752,7 +746,7 @@ export class RaftGroup {
       } else {
         return {
           success: true,
-          newLeader: String(this.nodeId), // Transfer may have failed, we're still leader
+          newLeader: String(this.nodeId),
           durationMs,
           error: 'Leadership transfer may not have taken effect',
         };
@@ -771,13 +765,16 @@ export class RaftGroup {
 
   /**
    * Transfer leadership to a target node using a manual approach
-   * (campaign-based fallback when transferLeadership is unavailable).
+   * (campaign-based fallback when direct transferLeadership is unavailable).
+   *
+   * Submits a NOOP entry, then tries RaftAdapter.transferLeadership which
+   * stops the heartbeat. If that fails, waits for leadership change.
    */
   async transferLeadershipViaCampaign(targetNodeId: string): Promise<LeaderTransferResult> {
     const startTime = Date.now();
 
     try {
-      // Step 1: Prepend a no-op entry to ensure all prior entries are committed
+      // Step 1: Append a no-op entry to ensure all prior entries are committed
       const noopEntry: Partial<ApplyEntry> & Record<string, any> = {
         msgId: `noop-transfer-${Date.now()}`,
         type: 'exec',
@@ -785,18 +782,15 @@ export class RaftGroup {
       };
       await this.raft.propose(JSON.stringify(noopEntry));
 
-      // Step 2: Step down from leadership
-      const raftNode = (this.raft as any).node;
-      if (raftNode && typeof raftNode.stepDown === 'function') {
-        await raftNode.stepDown(5000);
-      } else {
-        // Fallback: manually step a MsgTimeoutNow to self
-        await this.raft.step({ from: String(targetNodeId), to: String(this.nodeId), msgType: 13 });
+      // Step 2: Use RaftAdapter's transferLeadership (stop heartbeat) to trigger election
+      try {
+        await this.raft.transferLeadership(targetNodeId);
+      } catch (e) {
+        // Direct transfer not possible — manual step-down will be handled
+        // by the LeaderTransferHandler extension or via heartbeat timeout
       }
 
-      const durationMs = Date.now() - startTime;
-
-      // Verify leadership change
+      // Step 3: Wait for leadership change
       let newLeader: number | null = null;
       for (let i = 0; i < 30; i++) {
         newLeader = await this.raft.getLeader();
@@ -804,17 +798,29 @@ export class RaftGroup {
         await new Promise(resolve => setTimeout(resolve, 200));
       }
 
+      const durationMs = Date.now() - startTime;
+
+      if (newLeader && newLeader !== this.nodeId) {
+        return {
+          success: true,
+          newLeader: String(newLeader),
+          durationMs,
+        };
+      }
+
+      // Fallback didn't work either
       return {
-        success: newLeader !== null && newLeader !== this.nodeId,
-        newLeader: newLeader ? String(newLeader) : undefined,
+        success: false,
+        newLeader: undefined,
         durationMs,
+        error: 'Campaign-based transfer failed: no new leader detected',
       };
     } catch (err: any) {
       return {
         success: false,
         newLeader: undefined,
         durationMs: Date.now() - startTime,
-        error: `Campaign-based transfer failed: ${err.message}`,
+        error: `Campaign transfer failed: ${err.message}`,
       };
     }
   }

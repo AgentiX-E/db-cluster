@@ -1,7 +1,7 @@
 /**
  * HAFailoverDetector — Failure detection with Raft-aware graceful deferral.
  *
- * DESIGN PHILOSOPHY (「最高标准绝不妥协」):
+ * DESIGN PHILOSOPHY (highest standard, no compromise):
  * ──────────────────────────────────────────
  *
  * Raft has a battle-tested leader election mechanism (randomized timeouts,

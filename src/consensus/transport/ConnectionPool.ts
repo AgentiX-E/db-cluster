@@ -52,16 +52,16 @@ export interface PeerInfo {
 }
 
 export interface PeerTlsVerifyOptions {
-  /** CN 前缀白名单。验证证书 CN 是否以其中任一开头。
-   *  默认: ["raft-node-"]，会校验 CN === "raft-node-{peerId}"。
-   *  设为 ["*"] 或空数组可跳过 CN 检查。 */
+  /** CN prefix allowlist. Verifies the certificate CN starts with any of these prefixes.
+   *  Default: ["raft-node-"], validates CN === "raft-node-{peerId}".
+   *  Set ["*"] or empty array to skip CN check. */
   allowedCNPrefixes?: string[];
-  /** SAN DNS 条目前缀白名单。验证证书 SAN 中是否有 DNS: 条目以此开头。
-   *  默认: ["raft-node-"]，要求 SAN 包含 "DNS:raft-node-{peerId}"。 */
+  /** SAN DNS entry prefix allowlist. Verifies SAN contains a DNS: entry starting with this prefix.
+   *  Default: ["raft-node-"], requires SAN to contain "DNS:raft-node-{peerId}". */
   allowedSANPrefixes?: string[];
-  /** 是否跳过 ext_key_usage 检查。设为 true 则接受不带 extKeyUsage 的证书。
-   *  Node.js v24+ 把 extKeyUsage OID 映射为 OID 字符串而非友好名，
-   *  默认 false 时会同时匹配友好名和 OID 字符串。 */
+  /** Whether to skip ext_key_usage check. Set true to accept certs without extKeyUsage.
+   *  Node.js v24+ maps extKeyUsage OID to OID strings instead of friendly names,
+   *  when false (default), matches both friendly names and OID strings. */
   skipExtKeyUsageCheck?: boolean;
 }
 
@@ -72,7 +72,7 @@ export interface ConnectionPoolConfig {
     cert: Buffer | string;
     key: Buffer | string;
     ca: Buffer | string;
-    /** 证书身份验证选项（可选）。不传则使用向后兼容的默认行为。 */
+    /** Certificate identity verification options (optional). Defaults to backward-compatible behavior. */
     verify?: PeerTlsVerifyOptions;
   };
   connectTimeoutMs?: number;
@@ -968,18 +968,18 @@ export class ConnectionPool {
           ciphers: 'TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POLY1305_SHA256:ECDHE-RSA-AES256-GCM-SHA384',
           ecdhCurve: 'prime256v1:secp384r1',
           checkServerIdentity: (hostname: string, cert: tls.PeerCertificate) => {
-            // 从配置读取验证选项，不传则用向后兼容默认值
+            // Read verify options from config; default to backward-compatible
             const verifyOpts = this.config.tls.verify || {};
 
-            // ── 1. CN 匹配 ──────────────────────────────────────
-            // 默认行为：CN === "raft-node-{peer.id}"
+            // ── 1. CN matching ──────────────────────────────────────
+            // Default: CN === "raft-node-{peer.id}"
             const cnPrefixes = verifyOpts.allowedCNPrefixes?.length
               ? verifyOpts.allowedCNPrefixes
               : [`raft-node-`];
             const cnStrict = !cnPrefixes.includes('*');
             if (cnStrict) {
               const cn = cert.subject?.CN || '';
-              // 当使用前缀列表时，检查 CN 以任一前缀开头
+              // With prefix list: check CN starts with any prefix
               const cnMatch = cnPrefixes.some((prefix: string) => cn === `${prefix}${peer.id}`);
               if (!cnMatch) {
                 return new Error(
@@ -989,8 +989,8 @@ export class ConnectionPool {
               }
             }
 
-            // ── 2. SAN 匹配 ──────────────────────────────────────
-            // 默认行为：SAN 包含 "DNS:raft-node-{peer.id}"
+            // ── 2. SAN matching ──────────────────────────────────────
+            // Default: SAN contains "DNS:raft-node-{peer.id}"
             const sanPrefixes = verifyOpts.allowedSANPrefixes?.length
               ? verifyOpts.allowedSANPrefixes
               : [`raft-node-`];
@@ -1001,10 +1001,10 @@ export class ConnectionPool {
                 const sanEntries = sans.split(/,\s*/);
                 const sanMatch = sanEntries.some((entry: string) => {
                   const trimmed = entry.trim();
-                  // 只检查 DNS: 条目
+                  // Only check DNS: entries
                   if (!trimmed.startsWith('DNS:')) return false;
-                  const dnsName = trimmed.slice(4); // 去掉 "DNS:" 前缀
-                  // 默认行为：dnsName === "raft-node-{peer.id}"
+                  const dnsName = trimmed.slice(4); // strip "DNS:" prefix
+                  // Default: dnsName === "raft-node-{peer.id}"
                   return sanPrefixes.some((prefix: string) => dnsName === `${prefix}${peer.id}`);
                 });
                 if (!sanMatch) {
@@ -1016,9 +1016,9 @@ export class ConnectionPool {
               }
             }
 
-            // ── 3. ext_key_usage 检查 ──────────────────────────
+            // ── 3. extKeyUsage check ──────────────────────────
             if (cert.ext_key_usage && !verifyOpts.skipExtKeyUsageCheck) {
-              // 兼容友好名（旧 Node 版本）和 OID 字符串（Node v24+）
+              // Compatible with friendly names (old Node) and OID strings (Node v24+)
               const OID_SERVER_AUTH = '1.3.6.1.5.5.7.3.1';
               const OID_CLIENT_AUTH = '1.3.6.1.5.5.7.3.2';
               const hasServerAuth = cert.ext_key_usage.some(

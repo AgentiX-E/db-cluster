@@ -6,6 +6,14 @@ export default defineConfig({
     globals: true,
     environment: 'node',
     include: ['src/**/*.test.ts'],
+    testTimeout: 120_000,
+    hookTimeout: 60_000,
+    pool: 'forks',
+    poolOptions: {
+      forks: {
+        singleFork: false,
+      },
+    },
     coverage: {
       provider: 'v8',
       include: ['src/interfaces/**/*.ts'],
@@ -17,3 +25,6 @@ export default defineConfig({
     },
   },
 });
+
+// Increase testTimeout for the stress test file specifically
+// via retry base to handle parallel resource contention

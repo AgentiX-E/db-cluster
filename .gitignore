@@ -3,3 +3,8 @@ dist/
 *.lmdb
 .DS_Store
 *.log
+
+# Personal session notes (not part of project)
+memory/
+# Root-level misplaced file
+/raft-core-worker.ts

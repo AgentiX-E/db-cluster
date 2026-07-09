@@ -1,10 +1,10 @@
 /**
- * BatchedRaftTransport — 适配 @maboke123/raft-core 的 Transport 接口
+ * BatchedRaftTransport — Adapter for @maboke123/raft-core Transport interface
  *
- * 将 RaftTcpTransport（消息路由基于 msg.to）包装为请求-响应模式。
+ * Wraps RaftTcpTransport (message routing by msg.to) into request-response mode.
  *
- * 在 Wire 层加 requestId 匹配请求↔响应。消息序列化为 JSON Buffer，
- * 使用 RaftTcpTransport.sendToPeer() 直接发送到目标 peer。
+ * Adds requestId at wire level to match requests to responses. Serializes as JSON Buffer,
+ * Uses RaftTcpTransport.sendToPeer() to send directly to target peer.
  */
 
 import { RaftTcpTransport, RaftTcpTransportConfig } from './RaftTcpTransport';
@@ -24,8 +24,8 @@ interface PendingEntry {
 const HEADER_SIZE = 5; // 4-bit length + 1-bit format
 
 /**
- * 构建 MessageCodec 兼容的 wire frame（JSON format）。
- * [4字节长度][1字节format=0x00][JSON payload]
+ * Builds MessageCodec-compatible wire frame (JSON format).
+ * [4-byte length][1-byte format=0x00][JSON payload]
  */
 function encodeWireBuffer(payload: Record<string, unknown>): Buffer {
   const json = JSON.stringify(payload);
@@ -78,7 +78,7 @@ export class BatchedRaftTransport implements Transport {
     this.handler = handler;
   }
 
-  /** 发送 RPC 请求并等待响应。 */
+  /** Send RPC request and wait for response. */
   async send(peerId: string, message: RPCMessage): Promise<RPCMessage> {
     const requestId = nextRequestId();
     const peerNumId = parseInt(peerId, 10);
@@ -102,14 +102,14 @@ export class BatchedRaftTransport implements Transport {
     await this.transport.waitForConnections();
   }
 
-  /** 处理入站消息 */
+  /** Handle inbound messages */
   private onIncoming(wireMsg: any, fromPeerId: string): void {
     if (!this.started) return;
 
     const requestId = wireMsg?.requestId;
     const inner = requestId ? wireMsg.msg : wireMsg;
 
-    // 响应方向消息：匹配 pending 请求
+    // Response direction: match pending request
     if (requestId && inner?.direction === 'response') {
       const pending = this.pendingMap.get(requestId);
       if (pending) {
@@ -120,7 +120,7 @@ export class BatchedRaftTransport implements Transport {
       return;
     }
 
-    // 请求方向消息：传给 handler
+    // Request direction: forward to handler
     if (!this.handler) return;
 
     this.handler(fromPeerId, inner).then((response: RPCMessage) => {

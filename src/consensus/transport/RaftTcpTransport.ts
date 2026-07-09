@@ -38,23 +38,23 @@ export interface RaftNodeConfig {
 }
 
 export interface RaftTcpTransportConfig {
-  /** 本节点信息 */
+  /** local node info */
   node: RaftNodeConfig;
-  /** 对端节点列表 */
+  /** peer node list */
   peers: RaftNodeConfig[];
-  /** mTLS 证书 */
+  /** mTLS certificates */
   tls: {
     cert: Buffer | string;
     key: Buffer | string;
     ca: Buffer | string;
-    /** 证书身份验证选项。不传则使用向后兼容默认值（raft-node-{id} CN/SAN）。 */
+    /** certificate identity verification options。defaults to backward-compatible value if omitted（raft-node-{id} CN/SAN）。 */
     verify?: import('./ConnectionPool').PeerTlsVerifyOptions;
   };
-  /** 连接超时（ms，默认 5000） */
+  /** connection timeout (ms, default 5000) */
   connectTimeoutMs?: number;
-  /** 初始重试间隔（ms，默认 100） */
+  /** initial retry interval (ms, default 100) */
   initialRetryMs?: number;
-  /** 最大重试间隔（ms，默认 30000） */
+  /** max retry interval (ms, default 30000) */
   maxRetryMs?: number;
   /** Message compression configuration (optional). */
   compression?: CompressionConfig;
@@ -75,7 +75,7 @@ export class RaftTcpTransport extends EventEmitter {
   private _registeredNodes: Map<number, RaftNodeConfig> = new Map();
 
   /**
-   * 用于从 incoming socket 读取完整帧的累积缓冲区
+   * accumulation buffer for reading complete frames from incoming socket
    * keyed by peerId (from TLS socket)
    */
   private _buffers: Map<string, Buffer> = new Map();
@@ -124,7 +124,7 @@ export class RaftTcpTransport extends EventEmitter {
   }
 
   /**
-   * 启动物理传输层：启动 TLS server + 初始化 ConnectionPool。
+   * start physical transport layer：start TLS server + initialize ConnectionPool。
    */
   async start(): Promise<void> {
     if (this._started) return;
@@ -314,11 +314,11 @@ export class RaftTcpTransport extends EventEmitter {
   }
 
   /**
-   * 发送 Raft 消息到所有对端。
-   * 这是 RaftGroupManager 调用的核心接口。
+   * Send Raft messages to all peers.
+   * Core interface called by RaftGroupManager.
    *
-   * @param fromId - 发送方节点 ID
-   * @param msgs - @maboke123/raft-core step() 吐出的消息列表
+   * @param fromId - sender node ID
+   * @param msgs - message list from @maboke123/raft-core step()
    */
   async send(fromId: number, msgs: RaftMessage[]): Promise<void> {
     if (this._stopped || !this.pool) return;
@@ -369,8 +369,8 @@ export class RaftTcpTransport extends EventEmitter {
   }
 
   /**
-   * 直接发送消息到指定 peer，跳过 `msg.to` 路由。
-   * 用于 @maboke123/raft-core 的 BatchedRaftTransport 适配。
+   * Send message directly to specified peer, bypassing `msg.to` routing.
+   * For BatchedRaftTransport adaptation with @maboke123/raft-core.
    */
   sendToPeer(peerId: number, payload: Buffer): void {
     if (this._stopped || !this.pool) return;
@@ -378,15 +378,15 @@ export class RaftTcpTransport extends EventEmitter {
   }
 
   /**
-   * 注册消息处理器。每次收到完整 Raft 消息时调用。
-   * @deprecated 使用 events: 'message' 事件替代
+   * Register message handler. Called for every complete Raft message.
+   * @deprecated Use events: 'message' event instead.
    */
   onMessage(handler: MessageHandler): void {
     this.on('message', handler);
   }
 
   /**
-   * 获取当前连接状态（用于监控）
+   * Get current connection status (for monitoring)
    */
   getStatus(): { connectedPeers: number[]; totalPeers: number; started: boolean } {
     return {

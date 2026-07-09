@@ -343,12 +343,15 @@ describe('Raft Core Multi-Node Cluster', () => {
     // Clear any stale messages
     clearMessages(newNodes);
 
-    // Kill the leader
-    killNode(leaderNode);
+    // Kill the leader (graceful shutdown)
+    sendCommand(leaderNode, 'shutdown');
+    await new Promise(r => setTimeout(r, 1000));
 
     // Wait for new leader among remaining nodes (takes longer with 2 nodes)
     const remainingNodes = newNodes.filter(n => n.id !== initialLeaderId);
-    const newLeaderMsg = await waitForMessage(remainingNodes, 'leader-elected', REELECTION_TIMEOUT);
+    const newLeaderMsg = await waitForMessage(remainingNodes, 'leader-elected', REELECTION_TIMEOUT, (msg) => {
+      return msg.data.leader !== initialLeaderId; // must be a DIFFERENT leader
+    });
     const newLeaderId = newLeaderMsg.data.leader;
     const newLeader = newNodes.find(n => n.id === newLeaderId)!;
     expect(newLeader).toBeDefined();

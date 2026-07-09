@@ -365,7 +365,7 @@ export class HAFailoverCoordinator {
   /**
    * Trigger leader election for the affected shard.
    *
-   * SAFETY GUARDS (防止与 Raft 原生选举冲突):
+   * SAFETY GUARDS (prevents conflict with Raft native election):
    *   1. RECHECK: Before campaigning, check if a leader now exists.
    *      If Raft's own election completed between the detector's check and
    *      now, abort (no need to campaign).

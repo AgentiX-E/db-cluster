@@ -49,6 +49,14 @@ export class HAClientManager {
   registerClient(clientId: string, shardId: string): void {
     const existing = this.clients.get(clientId);
     if (existing) {
+      // Remove from old shard index before updating
+      const oldShardSet = this.shardClients.get(existing.shardId);
+      if (oldShardSet) {
+        oldShardSet.delete(clientId);
+        if (oldShardSet.size === 0) {
+          this.shardClients.delete(existing.shardId);
+        }
+      }
       // Update existing entry
       existing.shardId = shardId;
       existing.registeredAt = Date.now();

@@ -1,77 +1,83 @@
-import { describe, it, expect, vi } from 'vitest';
-import { IConsensusLayer } from '../../interfaces/consensus/IConsensusLayer';
-import { RaftGroupConfig } from '../../interfaces/consensus/RaftGroupConfig';
-import { ConsensusRole, LogEntry, OperationResult } from '../../interfaces/types';
+/**
+ * IConsensusLayer Interface Contract Test
+ *
+ * Verifies the interface definition (type-level contract) for the
+ * production IConsensusLayer used by all HA and cluster components.
+ * Note: this is a compile-time + runtime verification of the interface shape.
+ */
 
-describe('IConsensusLayer', () => {
-  it('should define the interface contract', () => {
-    // Verify the interface exists and has expected methods
+import { describe, it, expect, vi } from 'vitest';
+import { IConsensusLayer, TopologyChange } from '../../consensus/interfaces/interfaces';
+
+describe('IConsensusLayer (new)', () => {
+  it('should define the interface contract with all production methods', () => {
     const methods: (keyof IConsensusLayer)[] = [
-      'initialize',
+      'start',
+      'stop',
       'propose',
-      'read',
-      'getState',
-      'addMember',
-      'removeMember',
-      'getHealth',
-      'triggerElection',
-      'shutdown',
-      'onLeaderChange',
-      'onCommit',
-      'onMembershipChange',
+      'isLeader',
+      'getLeader',
+      'getCommitIndex',
+      'registerShard',
+      'removeShard',
+      'notifyTopologyChange',
+      'getHealthStatus',
+      'campaign',
+      'on',
+      'off',
+      'setForceLeader',
     ];
     expect(methods.length).toBeGreaterThan(0);
   });
 
-  it('should accept a valid RaftGroupConfig', () => {
-    const config: RaftGroupConfig = {
-      groupId: 'raft-group-1',
+  it('should support a valid TopologyChange shape', () => {
+    const change: TopologyChange = {
+      type: 'leader_changed',
+      nodeId: 'node-1',
       shardId: 'shard-0',
-      members: ['node-1', 'node-2', 'node-3'],
-      electionTimeoutMs: [150, 300],
-      heartbeatIntervalMs: 50,
-      maxBatchSize: 100,
-      snapshotThreshold: 10000,
-    };
-    expect(config.groupId).toBe('raft-group-1');
-    expect(config.members).toHaveLength(3);
-  });
-
-  it('should define valid consensus roles', () => {
-    expect(Object.values(ConsensusRole)).toContain('follower');
-    expect(Object.values(ConsensusRole)).toContain('candidate');
-    expect(Object.values(ConsensusRole)).toContain('leader');
-  });
-
-  it('should define a valid log entry shape', () => {
-    const entry: LogEntry = {
-      index: 1,
-      term: 1,
-      command: 'SET',
-      data: { key: 'foo', value: 'bar' },
       timestamp: Date.now(),
     };
-    expect(entry.index).toBe(1);
-    expect(entry.command).toBe('SET');
+    expect(change.type).toBe('leader_changed');
+    expect(change.nodeId).toBe('node-1');
   });
 
-  it('mock consensus layer should implement interface', () => {
+  it('should support quorum_loss topology change', () => {
+    const change: TopologyChange = {
+      type: 'peer_removed',
+      nodeId: 'node-3',
+      timestamp: Date.now(),
+    };
+    expect(change.type).toBe('peer_removed');
+  });
+
+  it('should have correct method signatures via mock implementation', async () => {
     const mock: IConsensusLayer = {
-      initialize: vi.fn().mockResolvedValue({ success: true }),
-      propose: vi.fn().mockResolvedValue({ success: true, data: { index: 1, term: 1 } as LogEntry }),
-      read: vi.fn().mockResolvedValue({ success: true, data: [] }),
-      getState: vi.fn().mockResolvedValue({ success: true }),
-      addMember: vi.fn().mockResolvedValue({ success: true }),
-      removeMember: vi.fn().mockResolvedValue({ success: true }),
-      getHealth: vi.fn().mockResolvedValue({ success: true, data: [] }),
-      triggerElection: vi.fn().mockResolvedValue({ success: true }),
-      shutdown: vi.fn().mockResolvedValue(undefined),
-      onLeaderChange: vi.fn(),
-      onCommit: vi.fn(),
-      onMembershipChange: vi.fn(),
+      start: vi.fn().mockResolvedValue(undefined),
+      stop: vi.fn().mockResolvedValue(undefined),
+      propose: vi.fn().mockResolvedValue(42),
+      isLeader: vi.fn().mockResolvedValue(true),
+      getLeader: vi.fn().mockResolvedValue('node-1'),
+      getCommitIndex: vi.fn().mockResolvedValue(100),
+      registerShard: vi.fn(),
+      removeShard: vi.fn().mockResolvedValue(undefined),
+      notifyTopologyChange: vi.fn().mockResolvedValue(undefined),
+      getHealthStatus: vi.fn().mockResolvedValue([]),
+      campaign: vi.fn().mockResolvedValue(undefined),
+      on: vi.fn(),
+      off: vi.fn(),
+      setForceLeader: vi.fn(),
     };
 
-    expect(mock.initialize).toBeDefined();
-    expect(mock.propose).toBeDefined();
+    await mock.start();
+    expect(mock.start).toHaveBeenCalled();
+
+    const index = await mock.propose('shard-0', 'data');
+    expect(index).toBe(42);
+
+    const leader = await mock.getLeader('shard-0');
+    expect(leader).toBe('node-1');
+
+    mock.registerShard('shard-0', { peers: [1, 2, 3] });
+    expect(mock.registerShard).toHaveBeenCalledWith('shard-0', { peers: [1, 2, 3] });
   });
 });

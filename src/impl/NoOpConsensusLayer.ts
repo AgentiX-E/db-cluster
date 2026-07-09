@@ -106,15 +106,15 @@ export class NoOpConsensusLayer implements IConsensusLayer {
     // No-op: always leader
   }
 
-  // ── RaftGroupManager 兼容方法 (单节点无需 Raft) ─────────
+  // ── RaftGroupManager compatibility methods (single node, no Raft) ─────────
 
-  /** No-op: 单节点无 outbox */
+  /** No-op: single node has no outbox */
   setOutboxWriter(_writer: any): void {}
 
-  /** No-op: 单节点不需要分片级别复制注册 */
+  /** No-op: single node does not need shard-level replication registration */
   setSharedTransport(_transport: any): void {}
 
-  /** No-op: 单节点不需要传输层消 */
+  /** No-op: single node does not need transport messaging */
   registerShardWithReplica(
     _shardId: number,
     _replica: any,
@@ -123,14 +123,14 @@ export class NoOpConsensusLayer implements IConsensusLayer {
     _tlsConfig?: any,
     _raftConfig?: any,
   ): void {
-    // 委托给 registerShard (IConsensusLayer)
+    // Delegate to registerShard (IConsensusLayer)
     this.registerShard(String(_shardId));
   }
 
-  /** No-op: 单节点无 Raft 消息 */
+  /** No-op: single node has no Raft messages */
   handleRaftMessage(_shardId: number, _msg: any): void {}
 
-  /** No-op: 单节点无需 PG 端口映射 */
+  /** No-op: single node does not need PG port mapping */
   setPgPorts(
     _localPgPort: number,
     _pgPortMap: Record<number, number>,
@@ -138,18 +138,18 @@ export class NoOpConsensusLayer implements IConsensusLayer {
     _autoForward?: boolean,
   ): void {}
 
-  /** 单节点永远是 leader — 立即返回 */
+  /** Single node is always the leader — return immediately */
   async waitForRaftLeaders(_timeoutMs: number): Promise<boolean> {
     return true;
   }
 
-  /** No-op: 单节点集群拓扑 */
+  /** No-op: single node cluster topology */
   setClusterTopology(_topology: any): void {}
 
-  /** No-op: 单节点无需从 event bus 应用 */
+  /** No-op: single node does not need to consume from event bus */
   applyFromEventBus(_shardId: number, _payload: any): void {}
 
-  /** 返回空统计 */
+  /** Return empty stats */
   getStats(): any {
     return {
       totalProposals: 0,

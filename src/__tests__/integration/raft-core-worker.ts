@@ -184,10 +184,20 @@ async function main() {
             process.stderr.write(`[node-${nodeConfig.id}] Unknown command: ${msg.command}\n`);
         }
       } catch (err: any) {
+        let errorData: any = { error: err.message, command: msg.command };
+        // If propose was rejected, include the current leader for auto-retry
+        if (msg.command === 'propose') {
+          try {
+            const leaderId = await raftAdapter.getLeader();
+            errorData.currentLeader = leaderId;
+          } catch {
+            // ignore
+          }
+        }
         process.send?.({
           type: 'error',
           nodeId: nodeConfig.id,
-          data: { error: err.message, command: msg.command },
+          data: errorData,
           timestamp: Date.now(),
         });
       }

@@ -15,7 +15,7 @@
  */
 
 import { RaftNode, InMemoryNodeStorage, LogEntryType } from '@maboke123/raft-core';
-import type { RaftConfig as CoreRaftConfig, NodeStorage } from '@maboke123/raft-core';
+import type { RaftConfig as CoreRaftConfig, NodeStorage, Transport } from '@maboke123/raft-core';
 import { SqliteNodeStorage } from '../storage/SqliteNodeStorage';
 import { ShardStateMachine } from './ShardStateMachine';
 import { BatchedRaftTransport } from '../transport/BatchedRaftTransport';
@@ -31,21 +31,21 @@ const logger = pino({ level: process.env.LOG_LEVEL || 'info' });
 // ──────────────────────────────────────────
 
 export interface RaftTcpTransportConfig {
-  /** 本节点信息 */
+  /** Local node info */
   node: { id: number; host: string; port: number };
-  /** 对端节点列表 */
+  /** Peer node list */
   peers: Array<{ id: number; host: string; port: number }>;
-  /** mTLS 证书 */
+  /** mTLS certificates */
   tls: {
     cert: Buffer | string;
     key: Buffer | string;
     ca: Buffer | string;
   };
-  /** 连接超时（ms，默认 5000） */
+  /** Connection timeout (ms, default 5000) */
   connectTimeoutMs?: number;
-  /** 初始重试间隔（ms，默认 100） */
+  /** Initial retry interval (ms, default 100) */
   initialRetryMs?: number;
-  /** 最大重试间隔（ms，默认 30000） */
+  /** Max retry interval (ms, default 30000) */
   maxRetryMs?: number;
 }
 
@@ -117,7 +117,7 @@ export class RaftAdapter {
   private applyHandler: ((data: string, index?: number, term?: number) => void) | null = null;
 
   private nodeStorage: NodeStorage | null = null;
-  private transport: BatchedRaftTransport | null = null;
+  private transport: Transport | null = null;
   private originalTcpTransport: OriginalRaftTcpTransport | null = null;
 
   // Snapshot tracking
@@ -140,11 +140,13 @@ export class RaftAdapter {
    * @param applyHandler - Called for every committed entry with data, plus optional index/term
    * @param tcpConfig - Optional TCP transport config (mutually exclusive with sharedTransport)
    * @param sharedTransport - Optional SharedTransport (shared across all RaftGroups, mutually exclusive with tcpConfig)
+   *                           Can be a plain SharedTransport or a tuple { transport, shardId } for
+   *                           per-shard message routing in single-process multi-RaftGroup mode.
    */
   async init(
     applyHandler?: ((data: string, index?: number, term?: number) => void),
     tcpConfig?: RaftTcpTransportConfig,
-    sharedTransport?: SharedTransport,
+    sharedTransport?: SharedTransport | { transport: SharedTransport; shardId: number },
   ): Promise<void> {
     if (applyHandler) this.applyHandler = applyHandler;
 
@@ -182,29 +184,33 @@ export class RaftAdapter {
       this.nodeStorage = storage;
 
       // ── Step 2: Build Transport ──────────────────────────────
-      let raftTransport: BatchedRaftTransport;
+      let raftTransport: Transport;
 
       if (this.config.transport) {
         // Custom transport already provided
         raftTransport = this.config.transport;
       } else if (sharedTransport) {
-        // SharedTransport (NodeTransport) — wrap in BatchedRaftTransport-compatible adapter
-        // SharedTransport has forShard() returning a { send(fromId, msgs) } object.
-        // We need a real BatchedRaftTransport for RPC request/response matching.
-        // For now, we use a simple bridge that implements the Transport interface.
-
-        // Create an internal transport that wraps SharedTransport
-        const { RaftTransportAdapter } = await import('../transport/RaftTransportAdapter');
-        const bridgeTransport = new RaftTransportAdapter(sharedTransport as any, this.config.id);
-
-        // Create an offline BatchedRaftTransport to get the wire protocol
-        // Actually, SharedTransport mode means NodeTransport in-memory routing.
-        // The existing RaftTransportAdapter already implements the old adapter
-        // transport interface (send with messages array). We need to bridge it
-        // to the @maboke123/raft-core Transport interface (send one msg, get one response).
-
-        // Create a minimal Transport bridge that wraps SharedTransport
-        raftTransport = await this.buildSharedTransportBridge(sharedTransport);
+        // SharedTransport (e.g., NodeTransport singleton for single-process
+        // multi-RaftGroup).  Use SharedBatchedTransport which implements
+        // proper request/response matching via requestId and
+        // SharedTransport.onMessage() dispatch.
+        // sharedTransport can be a plain SharedTransport or { transport, shardId } tuple.
+        let st: SharedTransport;
+        let shardId: number;
+        if ('transport' in (sharedTransport as any)) {
+          const tuple = sharedTransport as { transport: SharedTransport; shardId: number };
+          st = tuple.transport;
+          shardId = tuple.shardId;
+        } else {
+          st = sharedTransport as SharedTransport;
+          shardId = this.config.id;
+        }
+        const { SharedBatchedTransport } = await import('../transport/SharedBatchedTransport');
+        raftTransport = new SharedBatchedTransport(
+          st,
+          shardId,
+          String(this.config.id),
+        );
       } else if (tcpConfig) {
         // TCP + mTLS — BatchedRaftTransport wraps the single RaftTcpTransport instance
         raftTransport = new BatchedRaftTransport({
@@ -217,9 +223,10 @@ export class RaftAdapter {
         });
 
         // Wait for connections before starting Raft to avoid heartbeat drops
-        await raftTransport.underlying.start();
-        await raftTransport.underlying.waitForConnections();
-        this.originalTcpTransport = raftTransport.underlying;
+        const batchedTransport = raftTransport as BatchedRaftTransport;
+        await batchedTransport.underlying.start();
+        await batchedTransport.underlying.waitForConnections();
+        this.originalTcpTransport = batchedTransport.underlying;
       } else {
         if (this.config.useInMemoryTransport) {
           throw new SqlVecError(
@@ -265,7 +272,10 @@ export class RaftAdapter {
         ? `${tcpConfig.node.host}:${tcpConfig.node.port}`
         : this.config.address || `node-${this.config.id}:0`;
 
-      const peers = this.config.peers
+      // SharedTransport mode (no tcpConfig) may not have peers in config;
+      // the transport layer handles peer routing, so use empty peer list.
+      const peerIds = this.config.peers || [];
+      const peers = peerIds
         .filter(p => p !== this.config.id)
         .map(p => ({
           id: String(p),
@@ -317,36 +327,9 @@ export class RaftAdapter {
    * pattern: the adapter wires messages from the TCP transport (or shared transport)
    * into the Raft layer. For SharedTransport, messages come from inter-group routing.
    *
-   * Since we can't wire onMessage() on SharedTransport (it doesn't have one),
-   * we return a transport that handles send() via shared.send() but relies on
-   * the caller (RaftGroupManager) to call RaftAdapter.step() with incoming messages.
-   *
-   * The actual inbound routing is handled by RaftGroupManager which receives
-   * messages from NodeTransport and calls group.handleMessage() / group.step().
    */
-  private async buildSharedTransportBridge(shared: SharedTransport): Promise<BatchedRaftTransport> {
-    const selfId = this.config.id;
-
-    // We create a transport stub that sends via SharedTransport.
-    // The inbound routing will be handled externally (RaftGroupManager calls step()).
-    const handlerStack: Array<(from: string, msg: any) => Promise<any>> = [];
-
-    const transport: BatchedRaftTransport = {
-      start: async () => {},
-      stop: async () => {},
-      isStarted: () => true,
-      send: async (peerId: string, message: any): Promise<any> => {
-        const msgs = [message];
-        await shared.send(String(selfId), msgs as any);
-        return message;
-      },
-      onMessage: (handler: (from: string, msg: any) => Promise<any>) => {
-        handlerStack.push(handler);
-      },
-    } as unknown as BatchedRaftTransport;
-
-    return transport;
-  }
+  // Removed: buildSharedTransportBridge — replaced by SharedBatchedTransport above.
+  // private async buildSharedTransportBridge(...): Promise<BatchedRaftTransport> { ... }
 
   /**
    * Propose an entry through Raft consensus.
@@ -454,6 +437,86 @@ export class RaftAdapter {
         `Raft propose failed: ${err.message}`,
         SqlVecErrorCode.INTERNAL_ERROR,
       );
+    }
+  }
+
+  /**
+   * Transfer leadership to a target node.
+   *
+   * Must be called on the leader. Stops heartbeat so the target node detects
+   * leader loss and triggers an election. Waits up to 10 seconds for the
+   * target to become the new leader.
+   *
+   * @param targetNodeId - The node ID to transfer leadership to
+   * @throws Error if not leader or transfer times out
+   */
+  async transferLeadership(targetNodeId: string): Promise<void> {
+    if (!this.node) throw new Error('RaftAdapter not initialized');
+    if (!(await this.isLeader())) {
+      throw new Error('Only the leader can transfer leadership');
+    }
+
+    // Step 1: Submit NOOP to ensure all prior entries are committed
+    const result = await this.node.submitCommand({
+      type: 'command',
+      payload: JSON.stringify({
+        __noop: true,
+        reason: 'leader-transfer',
+        ts: Date.now(),
+      }),
+    });
+    if (!result.success) {
+      throw new Error(`Failed to commit NOOP entry: ${result.error || 'unknown'}`);
+    }
+
+    // Step 2: Stop heartbeat so target detects leader loss
+    await this.stopHeartbeat();
+
+    // Step 3: Wait for new leader
+    const startTime = Date.now();
+    const timeoutMs = 10_000;
+    const pollIntervalMs = 200;
+    const maxAttempts = timeoutMs / pollIntervalMs;
+
+    const selfNodeId = Number(this.node.getNodeId());
+
+    for (let i = 0; i < maxAttempts; i++) {
+      const leader = await this.getLeader();
+      if (leader !== null && leader !== selfNodeId) {
+        // Wait briefly for the new leader to be ready
+        await new Promise(r => setTimeout(r, 500));
+        return;
+      }
+      await new Promise(resolve => setTimeout(resolve, pollIntervalMs));
+    }
+
+    throw new Error(
+      `Leadership transfer timed out: target ${targetNodeId} did not become leader within ${timeoutMs}ms`,
+    );
+  }
+
+  /**
+   * Stop the heartbeat timer on the current leader.
+   *
+   * This causes the other nodes to detect leader loss via election timeout,
+   * triggering a new election cycle. Only callable on the leader node.
+   *
+   * Accessible via RaftAdapter to avoid exposing the internal RaftNode as any.
+   */
+  async stopHeartbeat(): Promise<void> {
+    if (!this.node) throw new Error('RaftAdapter not initialized');
+
+    const stateMachine = (this.node as any).stateMachine;
+    if (!stateMachine || typeof stateMachine.timerManager?.stopHeartbeatTimer !== 'function') {
+      throw new Error('Cannot stop heartbeat: timerManager not accessible');
+    }
+
+    const timerManager = stateMachine.timerManager;
+    timerManager.stopHeartbeatTimer();
+
+    // Double-stop to cover any edge cases
+    if (typeof timerManager.stopHeartbeatTimer === 'function') {
+      timerManager.stopHeartbeatTimer();
     }
   }
 
