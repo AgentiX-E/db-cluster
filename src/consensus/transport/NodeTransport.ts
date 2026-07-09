@@ -53,9 +53,8 @@ import pino from 'pino';
 const logger = pino({ level: process.env.LOG_LEVEL || 'info' });
 
 
-export interface NodeTransportConfig extends RaftTcpTransportConfig {
-  // No additional fields needed; reuses RaftTcpTransport config
-}
+// NodeTransportConfig reuses RaftTcpTransportConfig; no additional fields needed.
+export type NodeTransportConfig = RaftTcpTransportConfig;
 
 /**
  * Per-shard transport wrapper created by NodeTransport.forShard().

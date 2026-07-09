@@ -565,7 +565,7 @@ export class RaftAdapter {
     if (!this.node) return null;
     try {
       const leaderId = this.node.getLeaderId();
-      if (leaderId == null) return null;
+      if (leaderId === null) return null;
       return Number(leaderId);
     } catch {
       return null;

@@ -29,11 +29,11 @@ import {
   DEFAULT_PIPELINE_CONFIG,
   FlexibleQuorumConfig,
   resolveFlexibleQuorumConfig,
-  majorityQuorum,
+  type majorityQuorum,
   SharedTransport,
   InstallSnapshotRequest,
 } from '../../interfaces/types';
-import { InstallSnapshotHandler, InstallSnapshotHandlerConfig } from '../extensions/InstallSnapshotHandler';
+import { InstallSnapshotHandler, type InstallSnapshotHandlerConfig } from '../extensions/InstallSnapshotHandler';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
@@ -785,7 +785,7 @@ export class RaftGroup {
       // Step 2: Use RaftAdapter's transferLeadership (stop heartbeat) to trigger election
       try {
         await this.raft.transferLeadership(targetNodeId);
-      } catch (e) {
+      } catch {
         // Direct transfer not possible — manual step-down will be handled
         // by the LeaderTransferHandler extension or via heartbeat timeout
       }
@@ -1487,7 +1487,7 @@ export class RaftGroup {
         if (!st) return;
 
         // Track leader heartbeat — any non-null leader is considered healthy
-        if (st.lead != null && st.lead !== '0') {
+        if (st.lead !== null && st.lead !== '0') {
           this._leaderHeartbeatTs = Date.now();
 
           // C-03: Only forward heartbeats with a term >= the last known term.

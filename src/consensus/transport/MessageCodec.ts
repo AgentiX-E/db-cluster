@@ -148,7 +148,7 @@ export class MessageCodec {
     }
 
     // Normalise: ensure entries exist as an array if present
-    if (msg.entries != null && !Array.isArray(msg.entries)) {
+    if (msg.entries !== null && !Array.isArray(msg.entries)) {
       msg.entries = [];
     }
 
@@ -174,7 +174,7 @@ export class MessageCodec {
 
     const msg = msgpackDecode(payload) as RaftMessage;
 
-    if (msg.entries != null && !Array.isArray(msg.entries)) {
+    if (msg.entries !== null && !Array.isArray(msg.entries)) {
       msg.entries = [];
     }
 
@@ -216,9 +216,9 @@ export class MessageCodec {
     if (typeof msg.from === 'number') msg.from = String(msg.from);
     if (typeof msg.to === 'number') msg.to = String(msg.to);
     if (typeof msg.term === 'number') msg.term = String(msg.term);
-    if (msg.logTerm != null && typeof msg.logTerm === 'number') msg.logTerm = String(msg.logTerm);
-    if (msg.index != null && typeof msg.index === 'number') msg.index = String(msg.index);
-    if (msg.commit != null && typeof msg.commit === 'number') msg.commit = String(msg.commit);
+    if (msg.logTerm !== null && typeof msg.logTerm === 'number') msg.logTerm = String(msg.logTerm);
+    if (msg.index !== null && typeof msg.index === 'number') msg.index = String(msg.index);
+    if (msg.commit !== null && typeof msg.commit === 'number') msg.commit = String(msg.commit);
 
     // entry.data must be base64 string, not byte array
     if (msg.entries) {

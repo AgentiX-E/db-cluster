@@ -41,7 +41,7 @@ DEBUG=1 npx vitest run src/__tests__/performance/raft-chaos.test.ts
 
 ### Current Coverage
 
-- **46 test files, 441 tests, 0 failures**
+- **43 test files, 391 tests, 0 failures**
 - All source files referenced by at least one test
 - Real 3-node in-process mTLS clusters in integration + performance suites
 - Chaos engineering: leader kill, follower kill, leader flapping verification

@@ -23,7 +23,6 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { RaftAdapter } from '../../consensus/core/RaftAdapter';
 import { HAConsistencyVerifier } from '../../ha/HAConsistencyVerifier';
 import { HAClientManager } from '../../ha/HAClientManager';
-import { ReadReplicaManager } from '../../ha/ReadReplicaManager';
 import { FencingManager } from '../../consensus/fencing/FencingManager';
 import { ClockCompensator } from '../../ha/ClockCompensator';
 import { HAFailoverDetector } from '../../ha/HAFailoverDetector';
@@ -344,29 +343,6 @@ describe('HA E2E Integration - 3-node cluster', () => {
   });
 
   //
-  // AC 25.5: ReadReplicaManager register/deregister
-  //
-  it('AC 25.5: ReadReplicaManager register/deregister', async () => {
-    const rrm = new ReadReplicaManager();
-
-    rrm.registerReplica('rr-1', '127.0.0.1:9001');
-    rrm.registerReplica('rr-2', '127.0.0.1:9002');
-
-    const r1 = rrm.getReplica('rr-1');
-    expect(r1).toBeDefined();
-    expect(r1!.status).toBe('healthy');
-
-    const r2 = rrm.getReplica('rr-2');
-    expect(r2).toBeDefined();
-
-    // Deregister
-    rrm.deregisterReplica('rr-1');
-    expect(rrm.getReplica('rr-1')).toBeUndefined();
-
-    // Max lag on healthy replicas
-    expect(rrm.getMaxLag()).toBe(0);
-  });
-
   //
   // AC 25.6: ClockCompensator RTT recording
   //

@@ -1,6 +1,6 @@
 # db-cluster Architecture
 
-> Last updated: 2026-07-09 · Test coverage: 46 files, 441 tests, 0 failures
+> Last updated: 2026-07-09 · Test coverage: 43 files, 391 tests, 0 failures
 
 ---
 
