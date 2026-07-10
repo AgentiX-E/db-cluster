@@ -28,6 +28,7 @@ import { InstallSnapshotRequest, InstallSnapshotResponse } from '../../interface
 import { RaftAdapter, SnapshotMeta } from '../core/RaftAdapter';
 
 import pino from 'pino';
+import { getErrorMessage } from '../helpers/errorUtils';
 const logger = pino({ level: process.env.LOG_LEVEL || 'info' });
 
 // ──────────────────────────────────────────
@@ -191,8 +192,8 @@ export class InstallSnapshotHandler {
             `(term ${meta.lastIncludedTerm}) from leader ${req.leaderId} ` +
             `(${state.totalBytesReceived} bytes in ${state.chunks.length} chunks)`,
         );
-      } catch (err: any) {
-        logger.error(`[InstallSnapshot] Failed to install snapshot: ${err.message}`);
+      } catch (err: unknown) {
+        logger.error(`[InstallSnapshot] Failed to install snapshot: ${getErrorMessage(err)}`);
         this.incomingState.delete(key);
         throw err;
       }
@@ -316,7 +317,7 @@ export class InstallSnapshotHandler {
           failCount++;
           logger.error(
             `[InstallSnapshot] Failed to send chunk ${successCount + failCount} ` +
-              `to ${targetNodeId}: ${err.message}`,
+              `to ${targetNodeId}: ${getErrorMessage(err)}`,
           );
           // Continue with remaining chunks (best-effort)
         }
@@ -328,8 +329,8 @@ export class InstallSnapshotHandler {
       );
 
       return failCount === 0;
-    } catch (err: any) {
-      logger.error(`[InstallSnapshot] Snapshot send failed: ${err.message}`);
+    } catch (err: unknown) {
+      logger.error(`[InstallSnapshot] Snapshot send failed: ${getErrorMessage(err)}`);
       return false;
     }
   }

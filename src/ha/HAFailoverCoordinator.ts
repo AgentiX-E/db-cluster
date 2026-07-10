@@ -678,7 +678,7 @@ export class HAFailoverCoordinator {
 
       const result = await Promise.race([transferPromise, timeoutPromise]);
       return result;
-    } catch (err: any) {
+    } catch (err: unknown) {
       logger.error({ err, shardId, targetNodeId }, 'Leadership transfer failed');
       return false;
     } finally {

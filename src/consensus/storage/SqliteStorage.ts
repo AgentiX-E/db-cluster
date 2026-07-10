@@ -27,6 +27,7 @@ import * as fs from 'fs';
 import crc32 from 'buffer-crc32';
 
 import pino from 'pino';
+import { getErrorMessage } from '../helpers/errorUtils';
 const logger = pino({ level: process.env.LOG_LEVEL || 'info' });
 
 // ──────────────────────────────────────────
@@ -278,8 +279,8 @@ export class SqliteStorage {
       } finally {
         fs.closeSync(fd);
       }
-    } catch (err: any) {
-      logger.error(`[SqliteStorage] fsync failed: ${err.message}`);
+    } catch (err: unknown) {
+      logger.error(`[SqliteStorage] fsync failed: ${getErrorMessage(err)}`);
     }
   }
 
@@ -340,10 +341,10 @@ export class SqliteStorage {
       for (const entry of batch) {
         entry.resolve();
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       // Reject all queued callbacks
       for (const entry of batch) {
-        entry.reject(new Error(`Group fsync failed: ${err.message}`));
+        entry.reject(new Error(`Group fsync failed: ${getErrorMessage(err)}`));
       }
     }
   }
@@ -369,8 +370,8 @@ export class SqliteStorage {
           fs.closeSync(fd);
         }
       }
-    } catch (err: any) {
-      logger.error(`[SqliteStorage] WAL fsync failed: ${err.message}`);
+    } catch (err: unknown) {
+      logger.error(`[SqliteStorage] WAL fsync failed: ${getErrorMessage(err)}`);
     }
   }
 
@@ -403,9 +404,9 @@ export class SqliteStorage {
       }
 
       return { ok: true, message: 'Integrity check passed' };
-    } catch (err: any) {
-      logger.error(`[SqliteStorage] Crash recovery failed: ${err.message}`);
-      return { ok: false, message: `Crash recovery error: ${err.message}` };
+    } catch (err: unknown) {
+      logger.error(`[SqliteStorage] Crash recovery failed: ${getErrorMessage(err)}`);
+      return { ok: false, message: `Crash recovery error: ${getErrorMessage(err)}` };
     }
   }
 

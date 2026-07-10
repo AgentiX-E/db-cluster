@@ -22,6 +22,7 @@
 import { LeaderTransferResult } from '../../interfaces/types';
 
 import pino from 'pino';
+import { getErrorMessage } from '../helpers/errorUtils';
 const logger = pino({ level: process.env.LOG_LEVEL || 'info' });
 
 // ──────────────────────────────────────────
@@ -114,8 +115,8 @@ export class LeaderTransferHandler {
       if (this.config.appendNoopEntry) {
         try {
           await proposeFn();
-        } catch (err: any) {
-          logger.warn(`[LeaderTransfer] No-op entry failed (non-fatal): ${err.message}`);
+        } catch (err: unknown) {
+          logger.warn(`[LeaderTransfer] No-op entry failed (non-fatal): ${getErrorMessage(err)}`);
         }
       }
 
@@ -153,7 +154,7 @@ export class LeaderTransferHandler {
         success: false,
         newLeader: undefined,
         durationMs,
-        error: `Leadership transfer failed: ${err.message}`,
+        error: `Leadership transfer failed: ${getErrorMessage(err)}`,
       };
     }
   }

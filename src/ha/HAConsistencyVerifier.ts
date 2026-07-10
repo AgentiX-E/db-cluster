@@ -18,6 +18,7 @@
 
 import pino from 'pino';
 import { IConsensusLayer } from '../consensus/interfaces/interfaces';
+import { getErrorMessage } from '../consensus/helpers/errorUtils';
 
 const logger = pino({ name: 'HAConsistencyVerifier' });
 
@@ -125,11 +126,11 @@ export class HAConsistencyVerifier {
         consistent: true,
         details: `Shard ${shardId} is consistent. commitIndex=${localCommitIndex}, leader=${localLeader}, replicas=${commitIndices.length}`,
       };
-    } catch (err: any) {
+    } catch (err: unknown) {
       logger.error({ err, shardId }, 'Failed to verify consistency');
       return {
         consistent: false,
-        details: `Error verifying consistency: ${err.message}`,
+        details: `Error verifying consistency: ${getErrorMessage(err)}`,
       };
     }
   }
@@ -191,12 +192,12 @@ export class HAConsistencyVerifier {
         checks.push({
           name: 'leader-identity',
           passed: false,
-          detail: `Failed to query current leader: ${err.message}`,
+          detail: `Failed to query current leader: ${getErrorMessage(err)}`,
         });
         logger.error({ err, shardId }, 'Failed to query leader identity');
         throw new Error(
           `[HAConsistencyVerifier] Cannot verify new leader consistency for shard ${shardId}: ` +
-            `consensus layer error when querying leader: ${err.message}`,
+            `consensus layer error when querying leader: ${getErrorMessage(err)}`,
         );
       }
 
@@ -230,9 +231,9 @@ export class HAConsistencyVerifier {
         checks.push({
           name: 'commit-progress',
           passed: false,
-          detail: `Failed to query commit index: ${err.message}`,
+          detail: `Failed to query commit index: ${getErrorMessage(err)}`,
         });
-        throw new Error(`[HAConsistencyVerifier] Cannot query commit index for shard ${shardId}: ${err.message}`);
+        throw new Error(`[HAConsistencyVerifier] Cannot query commit index for shard ${shardId}: ${getErrorMessage(err)}`);
       }
 
       const hasCommits = commitIndex >= 0;
@@ -292,10 +293,10 @@ export class HAConsistencyVerifier {
         checks.push({
           name: 'cross-replica-consistency',
           passed: true, // Non-fatal — health status may not be available on all nodes
-          detail: `Unable to fetch health status for cross-replica check: ${err.message}`,
+          detail: `Unable to fetch health status for cross-replica check: ${getErrorMessage(err)}`,
         });
         logger.warn(
-          { shardId, err: err.message },
+          { shardId, err: getErrorMessage(err) },
           'Health status unavailable — skipping cross-replica consistency check',
         );
       }
@@ -393,11 +394,11 @@ export class HAConsistencyVerifier {
       }
 
       return allPassed;
-    } catch (err: any) {
+    } catch (err: unknown) {
       // If we have partial checks, include them in the error log
       logger.error(
         { err, newLeaderId, shardId, checksCompleted: checks.length },
-        `Failed to verify new leader consistency: ${err.message}`,
+        `Failed to verify new leader consistency: ${getErrorMessage(err)}`,
       );
 
       // Re-throw errors that originated from our checks (descriptive Error with '[HAConsistencyVerifier]' prefix)

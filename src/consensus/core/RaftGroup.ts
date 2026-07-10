@@ -18,6 +18,7 @@ import { IShardReplica, ApplyEntry } from '../../interfaces/IShardReplica';
 import { IOutboxWriter } from '../../interfaces/IOutboxWriter';
 import { SqliteStorage } from '../storage/SqliteStorage';
 import { Mutex } from 'async-mutex';
+import { getErrorMessage } from '../helpers/errorUtils';
 import {
   RaftConsensusPhase,
   MembershipChange,
@@ -479,13 +480,13 @@ export class RaftGroup {
       }
 
       return { success: true, phase: RaftConsensusPhase.NORMAL };
-    } catch (err: any) {
+    } catch (err: unknown) {
       // Rollback on failure
       this._transitionalConfig = null;
       return {
         success: false,
         phase: RaftConsensusPhase.NORMAL,
-        error: `Membership change failed: ${err.message}`,
+        error: `Membership change failed: ${getErrorMessage(err)}`,
       };
     }
   }
@@ -521,9 +522,9 @@ export class RaftGroup {
 
       // Finalize: clear transitional config
       this._transitionalConfig = null;
-    } catch (err: any) {
+    } catch (err: unknown) {
       logger.error(
-        `[RaftGroup] C_NEW transition failed: ${err.message}. ` +
+        `[RaftGroup] C_NEW transition failed: ${getErrorMessage(err)}. ` +
           `C_JOINT entry at index ${jointIndex} already committed. Manual recovery may be needed.`,
       );
       // Even if C_NEW fails, we keep transitional config so that
@@ -738,14 +739,14 @@ export class RaftGroup {
           error: 'Leadership transfer may not have taken effect',
         };
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       this.leaderTransferInProgress = false;
       const durationMs = Date.now() - startTime;
       return {
         success: false,
         newLeader: undefined,
         durationMs,
-        error: `Leadership transfer failed: ${err.message}`,
+        error: `Leadership transfer failed: ${getErrorMessage(err)}`,
       };
     }
   }
@@ -802,12 +803,12 @@ export class RaftGroup {
         durationMs,
         error: 'Campaign-based transfer failed: no new leader detected',
       };
-    } catch (err: any) {
+    } catch (err: unknown) {
       return {
         success: false,
         newLeader: undefined,
         durationMs: Date.now() - startTime,
-        error: `Campaign transfer failed: ${err.message}`,
+        error: `Campaign transfer failed: ${getErrorMessage(err)}`,
       };
     }
   }
@@ -865,7 +866,7 @@ export class RaftGroup {
     }
     this.pipelineFlushTimer = setInterval(() => {
       this.flushPipeline().catch((err) => {
-        logger.error(`[RaftGroup] Pipeline flush error: ${err.message}`);
+        logger.error(`[RaftGroup] Pipeline flush error: ${getErrorMessage(err)}`);
       });
     }, this.pipelineConfig.batchIntervalMs);
   }
@@ -983,8 +984,8 @@ export class RaftGroup {
         } catch {
           // Outbox append is non-critical
         }
-      } catch (err: any) {
-        logger.error(`[RaftGroup] Pipeline entry ${entry.index} failed: ${err.message}`);
+      } catch (err: unknown) {
+        logger.error(`[RaftGroup] Pipeline entry ${entry.index} failed: ${getErrorMessage(err)}`);
       }
     }
 
@@ -1047,8 +1048,8 @@ export class RaftGroup {
       await this.raft.compactLogs(meta.lastIncludedIndex);
 
       logger.info(`[RaftGroup] Snapshot taken at index ${appliedIndex} (term ${term}, shard ${this.shardId})`);
-    } catch (err: any) {
-      logger.error(`[RaftGroup] Snapshot failed (shard ${this.shardId}): ${err.message}`);
+    } catch (err: unknown) {
+      logger.error(`[RaftGroup] Snapshot failed (shard ${this.shardId}): ${getErrorMessage(err)}`);
     }
   }
 
@@ -1178,7 +1179,7 @@ export class RaftGroup {
       })
       .catch((err: any) => {
         logger.error(
-          `[RaftGroup] Async propose failed (shard ${this.shardId}): ${err.message} ` +
+          `[RaftGroup] Async propose failed (shard ${this.shardId}): ${getErrorMessage(err)} ` +
             `| entry msgId=${entry.msgId}, type=${entry.type}`,
         );
         // M-05: Trigger health check callback on severe failure
@@ -1230,7 +1231,7 @@ export class RaftGroup {
     // and calls back when the full snapshot is ready.
     if (msg && msg.msgType === 14 && msg.snapshot && this.installSnapshotHandler) {
       this._handleInstallSnapshot(msg).catch((err: any) => {
-        logger.error(`[RaftGroup] InstallSnapshot error (shard ${this.shardId}): ${err.message}`);
+        logger.error(`[RaftGroup] InstallSnapshot error (shard ${this.shardId}): ${getErrorMessage(err)}`);
       });
       return;
     }
@@ -1499,8 +1500,8 @@ export class RaftGroup {
             await node.campaign();
           }
         }
-      } catch (err: any) {
-        logger.error(`[RaftGroup] Leader monitor error (shard ${this.shardId}): ${err.message}`);
+      } catch (err: unknown) {
+        logger.error(`[RaftGroup] Leader monitor error (shard ${this.shardId}): ${getErrorMessage(err)}`);
       }
     }, intervalMs);
   }
@@ -1667,8 +1668,8 @@ export class RaftGroup {
           await node.stepDown(5000);
           logger.info(`[RaftGroup] Leader stepped down due to minority partition (shard ${this.shardId})`);
         }
-      } catch (err: any) {
-        logger.error(`[RaftGroup] Failed to step down from minority partition (shard ${this.shardId}): ${err.message}`);
+      } catch (err: unknown) {
+        logger.error(`[RaftGroup] Failed to step down from minority partition (shard ${this.shardId}): ${getErrorMessage(err)}`);
       }
     }
   }

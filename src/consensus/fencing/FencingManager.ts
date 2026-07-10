@@ -20,6 +20,7 @@
  */
 
 import pino from 'pino';
+import { getErrorMessage } from '../helpers/errorUtils';
 const logger = pino({ level: process.env.LOG_LEVEL || 'info' });
 
 // ── Types ────────────────────────────────────────────────────────
@@ -366,8 +367,8 @@ export class FencingManager {
           for (const cb of this.fenceCallbacks) {
             try {
               cb(reason);
-            } catch (err: any) {
-              logger.error({ err: err.message }, '[FencingManager] Fence callback error');
+            } catch (err: unknown) {
+              logger.error({ err: getErrorMessage(err) }, '[FencingManager] Fence callback error');
             }
           }
 
@@ -381,8 +382,8 @@ export class FencingManager {
             for (const cb of this.panicCallbacks) {
               try {
                 cb(reason);
-              } catch (err: any) {
-                logger.error({ err: err.message }, '[FencingManager] Panic callback error');
+              } catch (err: unknown) {
+                logger.error({ err: getErrorMessage(err) }, '[FencingManager] Panic callback error');
               }
             }
             // If no panic callbacks registered, emit a fatal error to trigger default handling

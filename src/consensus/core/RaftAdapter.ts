@@ -250,7 +250,7 @@ export class RaftAdapter {
             try {
               this.applyHandler(data);
             } catch (err: any) {
-              logger.error({ err }, `[RaftAdapter] applyHandler error: ${err.message}`);
+              logger.error({ err: err as Error }, `[RaftAdapter] applyHandler error: ${err.message}`);
             }
           }
           this.committedCount++;
@@ -641,7 +641,7 @@ export class RaftAdapter {
       try {
         this.node.stop();
       } catch (err: any) {
-        logger.warn({ err }, '[RaftAdapter] Error stopping RaftNode');
+        logger.warn({ err: err as Error }, '[RaftAdapter] Error stopping RaftNode');
       }
       this.node = null;
     }
@@ -721,7 +721,7 @@ export class RaftAdapter {
       logger.info(`[RaftAdapter] Logs compacted at index ${lastIncludedIndex}`);
     } catch (err: any) {
       logger.warn(
-        { err },
+        { err: err as Error },
         `[RaftAdapter] Log compaction failed at index ${lastIncludedIndex}: ${err.message} — continuing`,
       );
     }

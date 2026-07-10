@@ -481,7 +481,7 @@ export class RaftGroupManager implements IConsensusLayer {
     try {
       group.stop();
     } catch (err) {
-      logger.error({ err }, `[RaftGroupManager] Error stopping group shard ${shardId}`);
+      logger.error({ err: err as Error }, `[RaftGroupManager] Error stopping group shard ${shardId}`);
     }
 
     this.groups.delete(shardId);
@@ -671,7 +671,7 @@ export class RaftGroupManager implements IConsensusLayer {
         return;
       }
     } catch (err) {
-      logger.debug({ err }, `[RaftGroupManager] Reconnect attempt ${state.attempt} for peer ${peerId} failed`);
+      logger.debug({ err: err as Error }, `[RaftGroupManager] Reconnect attempt ${state.attempt} for peer ${peerId} failed`);
     }
 
     // Schedule next retry
@@ -1328,7 +1328,7 @@ export class RaftGroupManager implements IConsensusLayer {
           pipelineDepth: group.getPipelineDepth(),
         });
       } catch (err: any) {
-        logger.error({ err }, `[RaftGroupManager] Error collecting health for shard ${shardId}`);
+        logger.error({ err: err as Error }, `[RaftGroupManager] Error collecting health for shard ${shardId}`);
         results.push({
           shardId,
           isLeader: false,
@@ -1721,7 +1721,7 @@ export class RaftGroupManager implements IConsensusLayer {
           ...health,
         });
       } catch (err: any) {
-        logger.error({ err }, `[RaftGroupManager] Error collecting leader health for shard ${shardId}`);
+        logger.error({ err: err as Error }, `[RaftGroupManager] Error collecting leader health for shard ${shardId}`);
         results.push({
           shardId,
           healthy: false,
