@@ -75,7 +75,6 @@ export interface IConsensusLayer {
    * Used by HA failover for 2-node stuck state (can't form majority).
    */
   setForceLeader(enabled: boolean): void;
-  off(event: string, handler: (...args: any[]) => void): void;
 }
 
 // ─────────────────────────────────────────────────────────────

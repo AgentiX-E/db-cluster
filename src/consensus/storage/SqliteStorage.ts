@@ -26,6 +26,8 @@ import * as path from 'path';
 import * as fs from 'fs';
 import crc32 from 'buffer-crc32';
 
+import { Mutex } from 'async-mutex';
+
 import pino from 'pino';
 import { getErrorMessage } from '../helpers/errorUtils';
 const logger = pino({ level: process.env.LOG_LEVEL || 'info' });
@@ -109,10 +111,14 @@ export class SqliteStorage {
 
   /** When true, fsync is deferred (used during batch writes). */
   private _batchMode: boolean = false;
+  /** Set to true at the end of open() — guards all prepared statement usage. */
+  private _initialized: boolean = false;
 
   // ── Group Commit (E5-WAL2) ────────────────────
   /** Pending group commit queue — collects callbacks. */
   private groupCommitQueue: Array<{ resolve: () => void; reject: (err: Error) => void }> = [];
+  /** Mutex to serialize group commit queue access. */
+  private _groupCommitMutex = new Mutex();
   /** Group commit timer (flushes batch after maxDelayMs). */
   private groupCommitTimer: ReturnType<typeof setTimeout> | null = null;
   /** Maximum delay before a group commit flush (default: 10ms). */
@@ -214,6 +220,8 @@ export class SqliteStorage {
     if (this.opts.onOpen) {
       this.opts.onOpen(this.db);
     }
+
+    this._initialized = true;
   }
 
   /**
@@ -294,11 +302,18 @@ export class SqliteStorage {
    * durable checkpoint, reducing fsync frequency while preserving
    * durability guarantees.
    */
-  requestFsync(): Promise<void> {
-    return new Promise<void>((resolve, reject) => {
-      this.groupCommitQueue.push({ resolve, reject });
-      this.scheduleGroupCommit();
+  async requestFsync(): Promise<void> {
+    let _resolve!: () => void;
+    let _reject!: (err: Error) => void;
+    const p = new Promise<void>((res, rej) => {
+      _resolve = res;
+      _reject = rej;
     });
+    await this._groupCommitMutex.runExclusive(() => {
+      this.groupCommitQueue.push({ resolve: _resolve, reject: _reject });
+    });
+    this.scheduleGroupCommit();
+    return p;
   }
 
   /**
@@ -306,6 +321,10 @@ export class SqliteStorage {
    * or immediately if we've reached max batch size.
    */
   private scheduleGroupCommit(): void {
+    // Queue-length check is best-effort here; flushGroupCommit acquires
+    // the mutex for the atomic swap. Checking length without the mutex
+    // is safe because the real atomicity is in flushGroupCommit. Worst
+    // case: we schedule a timer slightly early or late.
     if (this.groupCommitQueue.length >= this.groupCommitMaxBatch) {
       // Batch is full — flush immediately
       if (this.groupCommitTimer) {
@@ -328,9 +347,16 @@ export class SqliteStorage {
   /**
    * Flush all pending group commit entries with a single fsync.
    */
-  private flushGroupCommit(): void {
-    const batch = this.groupCommitQueue;
-    this.groupCommitQueue = [];
+  private async flushGroupCommit(): Promise<void> {
+    interface QueueEntry {
+      resolve: () => void;
+      reject: (err: Error) => void;
+    }
+    let batch: QueueEntry[] = [];
+    await this._groupCommitMutex.runExclusive(() => {
+      batch = this.groupCommitQueue;
+      this.groupCommitQueue = [];
+    });
 
     if (batch.length === 0) return;
 
@@ -432,6 +458,7 @@ export class SqliteStorage {
    */
   stats(): StorageStats {
     if (!this.db) throw new Error('Database not open');
+    if (!this._initialized) throw new Error('SqliteStorage not initialized');
 
     const minIndex = (this.stmtMinLogIndex!.get() as any)?.minIndex ?? 0;
     const countRow = this.stmtCountLogs!.get() as any;

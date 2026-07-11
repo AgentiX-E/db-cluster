@@ -34,6 +34,7 @@
 import tls from 'node:tls';
 import dns from 'node:dns';
 import { EventEmitter } from 'node:events';
+import { Mutex } from 'async-mutex';
 
 import { PeerCircuitBreakerWrapper, PeerCircuitBreakerOptions, CircuitBreakerMetric } from '../opt/CircuitBreaker';
 
@@ -316,7 +317,9 @@ export class PeerConnection extends EventEmitter {
 
     // If idle more than half the threshold, send heartbeat
     if (idleTime > IDLE_TIMEOUT / 2) {
-      this.sendHeartbeat().catch(() => {});
+      this.sendHeartbeat().catch((err: unknown) => {
+        console.warn('[ConnectionPool] Heartbeat send failed:', err);
+      });
     }
   }
 
@@ -415,6 +418,8 @@ export class ConnectionPool {
    */
   public onConnectionCreated: ((peerId: number, conn: PeerConnection) => void) | null = null;
   private config: Required<ConnectionPoolConfig>;
+  /** Mutex to prevent concurrent access to the _connections map. */
+  private _connMutex = new Mutex();
   private _connections: Map<number, PeerConnection> = new Map();
   private _incoming: Map<number, PeerConnection> = new Map(); // Latch for incoming
   private _pending: Map<number, PendingMessage[]> = new Map();
@@ -501,8 +506,8 @@ export class ConnectionPool {
 
     // Initiate connection (pool handles retry/backoff internally)
     if (!this._stopped) {
-      this.getConnection(peer.id).catch(() => {
-        // Connection pool handles retry/backoff internally
+      this.getConnection(peer.id).catch((err: unknown) => {
+        console.warn('[ConnectionPool] Init connection failed for peer', peer.id, ':', err);
       });
     }
 
@@ -525,8 +530,10 @@ export class ConnectionPool {
       throw new Error(`ConnectionPool: circuit breaker OPEN for peer ${peerId} (fast fail)`);
     }
 
-    // Check existing connection
-    const existing = this._connections.get(peerId);
+    // Check existing connection — atomic under mutex
+    const existing = await this._connMutex.runExclusive(async () => {
+      return this._connections.get(peerId);
+    });
     if (existing && existing.connected) {
       return existing;
     }
@@ -534,8 +541,10 @@ export class ConnectionPool {
     // If we already have an incoming connection, return it
     const incoming = this._incoming.get(peerId);
     if (incoming && incoming.connected) {
-      this._connections.set(peerId, incoming);
-      this._incoming.delete(peerId);
+      await this._connMutex.runExclusive(async () => {
+        this._connections.set(peerId, incoming);
+        this._incoming.delete(peerId);
+      });
       return incoming;
     }
 
@@ -614,7 +623,7 @@ export class ConnectionPool {
    * The connection is already mTLS-authenticated.
    * Validates the peer certificate CN.
    */
-  onIncoming(peerId: number, socket: tls.TLSSocket): PeerConnection | null {
+  async onIncoming(peerId: number, socket: tls.TLSSocket): Promise<PeerConnection | null> {
     if (this._stopped) return null;
 
     // Validate peer certificate
@@ -629,12 +638,17 @@ export class ConnectionPool {
     // message-responses like VoteResp back). Instead, we replace the existing
     // connection with the incoming one. The old connection is marked as
     // superseded so _onDisconnect doesn't delete the replacement.
-    const existing = this._connections.get(peerId);
+    let existing: PeerConnection | undefined;
+    await this._connMutex.runExclusive(async () => {
+      existing = this._connections.get(peerId);
+    });
     const newEpoch = (this._connectionEpoch.get(peerId) || 0) + 1;
     this._connectionEpoch.set(peerId, newEpoch);
 
     const conn = new PeerConnection(peerId, socket, newEpoch);
-    this._connections.set(peerId, conn);
+    await this._connMutex.runExclusive(async () => {
+      this._connections.set(peerId, conn);
+    });
 
     // Close the superseded connection (if any). Its 'close' handler detects
     // that _connections[peerId] !== this connection and does NOT trigger
@@ -691,9 +705,14 @@ export class ConnectionPool {
       this._retryTimers.delete(peerId);
     }
 
-    // Close all connections
+    // Close all connections — atomic under mutex
+    let localConnections: Array<[number, PeerConnection]> = [];
+    await this._connMutex.runExclusive(async () => {
+      localConnections = [...this._connections];
+      this._connections.clear();
+    });
     const closePromises: Array<Promise<void>> = [];
-    for (const [peerId, conn] of this._connections) {
+    for (const [peerId, conn] of localConnections) {
       closePromises.push(
         new Promise<void>((resolve) => {
           conn.once('close', () => resolve());
@@ -704,7 +723,6 @@ export class ConnectionPool {
       );
     }
     await Promise.allSettled(closePromises);
-    this._connections.clear();
     this._incoming.clear();
     this._pending.clear();
     this._retryAttempts.clear();
@@ -770,19 +788,21 @@ export class ConnectionPool {
   /**
    * Flush all pending messages for a peer on reconnection.
    */
-  flushPending(peerId: number): void {
+  async flushPending(peerId: number): Promise<void> {
     const queue = this._pending.get(peerId);
     if (!queue || queue.length === 0) return;
 
-    const conn = this._connections.get(peerId);
+    const conn = await this._connMutex.runExclusive(async () => {
+      return this._connections.get(peerId);
+    });
     if (!conn || !conn.connected) {
       return; // Not ready yet
     }
 
     const pending = queue.splice(0);
     for (const item of pending) {
-      conn.write(item.msg).catch(() => {
-        // Re-queue on failure
+      conn.write(item.msg).catch((err: unknown) => {
+        console.warn('[ConnectionPool] Write failed, re-queuing for peer', peerId, ':', err);
         this.enqueuePending(peerId, item.msg);
       });
     }
@@ -831,17 +851,22 @@ export class ConnectionPool {
       const newEpoch = (this._connectionEpoch.get(peerId) || 0) + 1;
       this._connectionEpoch.set(peerId, newEpoch);
       const conn = new PeerConnection(peerId, socket, newEpoch);
-      this._connections.set(peerId, conn);
+      await this._connMutex.runExclusive(async () => {
+        this._connections.set(peerId, conn);
+      });
 
       // Notify RaftTcpTransport to set up data listener (bidirectional)
       this.onConnectionCreated?.(peerId, conn);
 
       // Wire up events
-      conn.on('close', () => {
+      conn.on('close', async () => {
         // Only disconnect if this exact connection is still the active one.
         // A retry or incoming supersession may have replaced it with a newer
         // connection; deleting the replacement would break the pool.
-        if (this._connections.get(peerId) === conn) {
+        const active = await this._connMutex.runExclusive(async () => {
+          return this._connections.get(peerId);
+        });
+        if (active === conn) {
           this._onDisconnect(peerId);
         }
       });
@@ -1057,8 +1082,8 @@ export class ConnectionPool {
       }
 
       // Retry connection
-      this._connect(peerId).catch(() => {
-        // Error already handled in _connect
+      this._connect(peerId).catch((err: unknown) => {
+        console.warn('[ConnectionPool] Retry connect failed for peer', peerId, ':', err);
       });
     }, backoffMs);
 
@@ -1088,17 +1113,23 @@ export class ConnectionPool {
   }
 
   private async _onDisconnect(peerId: number): Promise<void> {
-    const conn = this._connections.get(peerId);
-    if (conn) {
-      // Remove the old connection reference (keep any incoming latch)
-      this._connections.delete(peerId);
-    }
+    let hasIncoming = false;
+    await this._connMutex.runExclusive(async () => {
+      const conn = this._connections.get(peerId);
+      if (conn) {
+        this._connections.delete(peerId);
+      }
 
-    // Check incoming latch for a fresh connection
-    const incoming = this._incoming.get(peerId);
-    if (incoming && incoming.connected) {
-      this._connections.set(peerId, incoming);
-      this._incoming.delete(peerId);
+      // Check incoming latch for a fresh connection
+      const incoming = this._incoming.get(peerId);
+      if (incoming && incoming.connected) {
+        this._connections.set(peerId, incoming);
+        this._incoming.delete(peerId);
+        hasIncoming = true;
+      }
+    });
+
+    if (hasIncoming) {
       this.flushPending(peerId);
       return;
     }
@@ -1121,15 +1152,19 @@ export class ConnectionPool {
    */
   private _waitForConnection(peerId: number): Promise<PeerConnection> {
     return new Promise<PeerConnection>((resolve, reject) => {
-      const check = () => {
-        const conn = this._connections.get(peerId);
+      const check = async () => {
+        const conn = await this._connMutex.runExclusive(async () => {
+          return this._connections.get(peerId);
+        });
         if (conn && conn.connected) {
           resolve(conn);
           return;
         }
         if (!this._connecting.has(peerId)) {
           // Connection attempt failed or stopped
-          const lastConn = this._connections.get(peerId);
+          const lastConn = await this._connMutex.runExclusive(async () => {
+            return this._connections.get(peerId);
+          });
           if (lastConn && lastConn.connected) {
             resolve(lastConn);
           } else {

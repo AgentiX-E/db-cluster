@@ -32,6 +32,8 @@ import * as crypto from 'crypto';
 import { SqliteStorage } from '../storage/SqliteStorage';
 import { performance } from 'node:perf_hooks';
 
+import { getErrorMessage } from '../helpers/errorUtils';
+
 import { IConsensusLayer, IClusterTopology, TopologyChange } from '../interfaces/interfaces';
 
 import { AdaptiveElectionTimeout } from '../opt/AdaptiveElectionTimeout';
@@ -163,6 +165,8 @@ export class RaftGroupManager implements IConsensusLayer {
   private peerReconnectState: Map<string, PeerReconnectState> = new Map();
   /** Phase 3c: Periodic reconnection monitor interval handle */
   private _reconnectMonitorTimer: ReturnType<typeof setInterval> | null = null;
+  /** Guards against overlapping _checkReconnections() invocations. */
+  private _reconnectRunning = false;
 
   /** PG connection pool for _execOnLeader (leaderPort → {client, lastUsed}) */
   private pgClientPool: Map<number, { client: any; lastUsed: number }> = new Map();
@@ -261,7 +265,9 @@ export class RaftGroupManager implements IConsensusLayer {
   private _startReconnectMonitor(): void {
     if (this._reconnectMonitorTimer) return;
     this._reconnectMonitorTimer = setInterval(() => {
-      this._checkReconnections().catch(() => {});
+      this._checkReconnections().catch((err: unknown) => {
+        console.warn('[RaftGroupManager] Reconnection check failed:', err);
+      });
     }, 500);
   }
 
@@ -521,7 +527,7 @@ export class RaftGroupManager implements IConsensusLayer {
     try {
       group.stop();
       logger.info({ shardId }, '[RaftGroupManager] Shard Raft group paused');
-    } catch (err: any) {
+    } catch (err: unknown) {
       logger.error({ err, shardId }, '[RaftGroupManager] Error pausing shard');
       throw err;
     }
@@ -552,7 +558,7 @@ export class RaftGroupManager implements IConsensusLayer {
     try {
       await group.init(this.sharedTransport);
       logger.info({ shardId }, '[RaftGroupManager] Shard Raft group resumed');
-    } catch (err: any) {
+    } catch (err: unknown) {
       logger.error({ err, shardId }, '[RaftGroupManager] Error resuming shard');
       throw err;
     }
@@ -683,28 +689,34 @@ export class RaftGroupManager implements IConsensusLayer {
    * Raft config but not connected via the transport layer.
    */
   private async _checkReconnections(): Promise<void> {
-    if (!this.sharedTransport) return;
+    if (this._reconnectRunning) return;
+    this._reconnectRunning = true;
+    try {
+      if (!this.sharedTransport) return;
 
-    // Collect all peer IDs from all groups' Raft configs
-    const allPeerIds = new Set<number>();
-    for (const [, config] of this.groupConfigs) {
-      for (const peerId of config.peers) {
-        if (peerId !== config.id) {
-          allPeerIds.add(peerId);
+      // Collect all peer IDs from all groups' Raft configs
+      const allPeerIds = new Set<number>();
+      for (const [, config] of this.groupConfigs) {
+        for (const peerId of config.peers) {
+          if (peerId !== config.id) {
+            allPeerIds.add(peerId);
+          }
         }
       }
-    }
 
-    for (const peerId of allPeerIds) {
-      const peerKey = String(peerId);
-      // Skip if already reconnecting
-      if (this.peerReconnectState.has(peerKey)) continue;
+      for (const peerId of allPeerIds) {
+        const peerKey = String(peerId);
+        // Skip if already reconnecting
+        if (this.peerReconnectState.has(peerKey)) continue;
 
-      // Check if peer is alive via cluster topology
-      const isAlive = this.clusterTopology?.isPeerAlive(peerKey) ?? true;
-      if (!isAlive) {
-        this.onPeerDisconnected(peerKey);
+        // Check if peer is alive via cluster topology
+        const isAlive = this.clusterTopology?.isPeerAlive(peerKey) ?? true;
+        if (!isAlive) {
+          this.onPeerDisconnected(peerKey);
+        }
       }
+    } finally {
+      this._reconnectRunning = false;
     }
   }
 
@@ -1070,7 +1082,9 @@ export class RaftGroupManager implements IConsensusLayer {
     if (!poolEntry || !this.pgPoolConnected.has(pgAddr.port)) {
       if (poolEntry) {
         // Stale connection — clean up
-        poolEntry.client.end().catch(() => {});
+        poolEntry.client.end().catch((endErr: unknown) => {
+          console.warn('[RaftGroupManager] Stale PG client end failed:', endErr);
+        });
         this.pgPoolConnected.delete(pgAddr.port);
       }
       const client = new Client({
@@ -1112,10 +1126,12 @@ export class RaftGroupManager implements IConsensusLayer {
       const t1Pool = performance.now();
       if (t1Pool - t0Pool > 10) {
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       // Connection may be stale — retry once with fresh connection
       try {
-        await poolEntry.client.end().catch(() => {});
+        await poolEntry.client.end().catch((endErr: unknown) => {
+          console.warn('[RaftGroupManager] Stale PG client end failed (retry):', endErr);
+        });
         const client = new Client({
           host: pgAddr.host,
           port: pgAddr.port,
@@ -1130,9 +1146,14 @@ export class RaftGroupManager implements IConsensusLayer {
         poolEntry = { client, lastUsed: Date.now() };
         this.pgClientPool.set(pgAddr.port, poolEntry);
         await poolEntry.client.query('-- @raft_forward\n' + sql);
-      } catch (retryErr: any) {
-        logger.warn({ err: retryErr, sql: sql.substring(0, 100) }, 'Auto-forward write to leader failed');
-        throw new Error(`This node is not the Raft leader for shard ${shardId} (forward failed: ${retryErr.message})`);
+      } catch (retryErr: unknown) {
+        logger.warn(
+          { err: retryErr, sql: sql.substring(0, 100) },
+          'Auto-forward write to leader failed',
+        );
+        throw new Error(
+          `This node is not the Raft leader for shard ${shardId} (forward failed: ${getErrorMessage(retryErr)})`,
+        );
       }
     }
   }
@@ -1144,7 +1165,9 @@ export class RaftGroupManager implements IConsensusLayer {
     const now = Date.now();
     for (const [port, entry] of this.pgClientPool) {
       if (now - entry.lastUsed > 30_000) {
-        entry.client.end().catch(() => {});
+        entry.client.end().catch((err: unknown) => {
+          console.warn('[RaftGroupManager] Idle PG client end failed:', err);
+        });
         this.pgPoolConnected.delete(port);
         this.pgClientPool.delete(port);
         logger.debug({ port }, 'Closed idle PG pool connection');
@@ -1327,8 +1350,8 @@ export class RaftGroupManager implements IConsensusLayer {
           lastLogIndex: progress.lastLog ?? 0,
           pipelineDepth: group.getPipelineDepth(),
         });
-      } catch (err: any) {
-        logger.error({ err: err as Error }, `[RaftGroupManager] Error collecting health for shard ${shardId}`);
+      } catch (err: unknown) {
+        logger.error({ err }, `[RaftGroupManager] Error collecting health for shard ${shardId}`);
         results.push({
           shardId,
           isLeader: false,
@@ -1338,7 +1361,7 @@ export class RaftGroupManager implements IConsensusLayer {
           appliedIndex: 0,
           lastLogIndex: 0,
           pipelineDepth: 0,
-          error: err.message,
+          error: getErrorMessage(err),
         });
       }
     }
@@ -1486,7 +1509,9 @@ export class RaftGroupManager implements IConsensusLayer {
       this._pgPoolCleanupTimer = null;
     }
     for (const [, entry] of this.pgClientPool) {
-      entry.client.end().catch(() => {});
+      entry.client.end().catch((err: unknown) => {
+        console.warn('[RaftGroupManager] PG client end on stop failed:', err);
+      });
     }
     this.pgClientPool.clear();
     this.pgPoolConnected.clear();
@@ -1549,13 +1574,13 @@ export class RaftGroupManager implements IConsensusLayer {
         logger.info(
           `[RaftGroupManager] Shard ${shardId} membership change: ${result.success ? 'success' : 'failed'} (phase: ${result.phase})`,
         );
-      } catch (err: any) {
+      } catch (err: unknown) {
         results.set(shardId, {
           success: false,
           phase: RaftConsensusPhase.NORMAL,
-          error: err.message,
+          error: getErrorMessage(err),
         });
-        logger.error(`[RaftGroupManager] Shard ${shardId} membership change error: ${err.message}`);
+        logger.error(`[RaftGroupManager] Shard ${shardId} membership change error: ${getErrorMessage(err)}`);
       }
     }
 
@@ -1720,8 +1745,8 @@ export class RaftGroupManager implements IConsensusLayer {
           shardId,
           ...health,
         });
-      } catch (err: any) {
-        logger.error({ err: err as Error }, `[RaftGroupManager] Error collecting leader health for shard ${shardId}`);
+      } catch (err: unknown) {
+        logger.error({ err }, `[RaftGroupManager] Error collecting leader health for shard ${shardId}`);
         results.push({
           shardId,
           healthy: false,

@@ -228,7 +228,10 @@ export class RaftTcpTransport extends EventEmitter {
       if (pending && pending.length > 0) {
         this._pendingMessages.delete(peerId);
         for (const buf of pending) {
-          conn.write(buf).catch(() => conn.close());
+          conn.write(buf).catch((err: unknown) => {
+            console.warn('[RaftTcpTransport] Write pending messages failed, closing connection:', err);
+            conn.close();
+          });
         }
       }
     };
@@ -263,7 +266,9 @@ export class RaftTcpTransport extends EventEmitter {
           // No live connection — kick off reconnect in the background.
           // The new connection's onConnectionCreated fires the data
           // listener and flushes _pendingMessages.
-          this._initiateConnection(peer.id).catch(() => {});
+          this._initiateConnection(peer.id).catch((err: unknown) => {
+            console.warn('[RaftTcpTransport] Health check reconnect failed for peer', peer.id, ':', err);
+          });
         }
       }
     }, 500);
@@ -280,7 +285,9 @@ export class RaftTcpTransport extends EventEmitter {
     await Promise.allSettled(
       peerList.map((peer) => {
         if (!this.pool) return Promise.resolve();
-        return this.pool.getConnection(peer.id).catch(() => {});
+        return this.pool.getConnection(peer.id).catch((err: unknown) => {
+          console.warn('[RaftTcpTransport] Wait for connection failed for peer', peer.id, ':', err);
+        });
       }),
     );
   }
@@ -445,7 +452,10 @@ export class RaftTcpTransport extends EventEmitter {
       this._compressor
         .compress(payload)
         .then(sendIt)
-        .catch(() => sendIt(payload));
+        .catch((err: unknown) => {
+          console.warn('[RaftTcpTransport] Compression failed, sending uncompressed:', err);
+          sendIt(payload);
+        });
     } else {
       sendIt(payload);
     }
@@ -476,11 +486,12 @@ export class RaftTcpTransport extends EventEmitter {
       return;
     }
 
-    conn.write(frame).catch(() => {
+    conn.write(frame).catch((err: unknown) => {
       // Write failed — socket's own close/error events handle cleanup
       // (_onDisconnect → _scheduleRetry).  Never force-close here: it
       // triggers a cascade where both sides simultaneously destroy the
       // same socket, duplicating reconnection effort.
+      console.warn('[RaftTcpTransport] Frame write failed:', err);
     });
   }
 
@@ -536,11 +547,15 @@ export class RaftTcpTransport extends EventEmitter {
 
     // Register this incoming connection with the connection pool
     if (this.pool) {
-      const conn = this.pool.onIncoming(peerId, socket);
-      if (!conn) {
+      this.pool.onIncoming(peerId, socket).then((conn) => {
+        if (!conn) {
+          socket.destroy();
+          return;
+        }
+      }).catch((err) => {
+        logger.error(`[RaftTcpTransport] onIncoming error: ${getErrorMessage(err)}`);
         socket.destroy();
-        return;
-      }
+      });
 
       // NOTE: Data listener is registered by `this.pool.onConnectionCreated`
       // which fires inside `onIncoming()` for BOTH incoming and outgoing

@@ -90,6 +90,10 @@ export class RaftGroup {
   /** M-01: Mutex to ensure pipeline operations are serialized. */
   private _pipelineMutex = new Mutex();
 
+  // ── Stop guard ──────────────────────────────────────────
+  /** Set to true when stop() is called. Guards against propose() after stop. */
+  private _stopped = false;
+
   // ── PITR ────────────────────────────────────────────────
   /** Optional PITR hook for WAL capture during apply. */
   readonly pitrHook?: IPITRHook;
@@ -1096,6 +1100,7 @@ export class RaftGroup {
   // ──────────────────────────────────────────
 
   async propose(entry: ApplyEntry): Promise<void> {
+    if (this._stopped) throw new Error('RaftGroup: group already stopped');
     const committed = await this.raft.propose(JSON.stringify(entry));
 
     (this.outboxManager as any).append({
@@ -1121,6 +1126,7 @@ export class RaftGroup {
    * but the batch itself is also dedup'd as a whole.
    */
   async proposeBatch(entries: ApplyEntry[]): Promise<void> {
+    if (this._stopped) throw new Error('RaftGroup: group already stopped');
     const batchMsgId = crypto.randomUUID();
     const batchEntry: Partial<ApplyEntry> = {
       msgId: batchMsgId,
@@ -1148,6 +1154,7 @@ export class RaftGroup {
    * Enterprise-grade path: guarantees durability on return.
    */
   async proposeAndWait(entry: ApplyEntry): Promise<void> {
+    if (this._stopped) throw new Error('RaftGroup: group already stopped');
     await this.raft.proposeAndWait(JSON.stringify(entry));
 
     (this.outboxManager as any).append({
@@ -1177,7 +1184,7 @@ export class RaftGroup {
           createdAt: Date.now(),
         });
       })
-      .catch((err: any) => {
+      .catch((err: unknown) => {
         logger.error(
           `[RaftGroup] Async propose failed (shard ${this.shardId}): ${getErrorMessage(err)} ` +
             `| entry msgId=${entry.msgId}, type=${entry.type}`,
@@ -1230,7 +1237,7 @@ export class RaftGroup {
     // assembles chunks, verifies checksums, persists the snapshot,
     // and calls back when the full snapshot is ready.
     if (msg && msg.msgType === 14 && msg.snapshot && this.installSnapshotHandler) {
-      this._handleInstallSnapshot(msg).catch((err: any) => {
+      this._handleInstallSnapshot(msg).catch((err: unknown) => {
         logger.error(`[RaftGroup] InstallSnapshot error (shard ${this.shardId}): ${getErrorMessage(err)}`);
       });
       return;
@@ -1773,6 +1780,7 @@ export class RaftGroup {
   // ════════════════════════════════════════════════════════════════
 
   stop(): void {
+    this._stopped = true;
     this.stopLeaderMonitor();
     this.raft.stop();
     if (this.pipelineFlushTimer) {

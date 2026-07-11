@@ -200,12 +200,12 @@ export class SharedBatchedTransport implements Transport {
         };
         respWireMsg._shardId = this.shardId;
 
-        this.doSend(respWireMsg).catch(() => {
-          // Silently drop response send failures — upstream will timeout
+        this.doSend(respWireMsg).catch((err: unknown) => {
+          console.warn('[SharedBatchedTransport] Response send failed:', err);
         });
       })
-      .catch(() => {
-        // Handler error — upstream will timeout
+      .catch((err: unknown) => {
+        console.warn('[SharedBatchedTransport] Handler error:', err);
       });
   }
 }

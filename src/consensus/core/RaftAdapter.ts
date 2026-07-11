@@ -22,6 +22,7 @@ import { BatchedRaftTransport } from '../transport/BatchedRaftTransport';
 import { RaftTcpTransport as OriginalRaftTcpTransport } from '../transport/RaftTcpTransport';
 import { SqlVecError, SqlVecErrorCode } from '../../interfaces/types';
 import type { SharedTransport } from '../../interfaces/types';
+import { getErrorMessage } from '../helpers/errorUtils';
 import pino from 'pino';
 
 const logger = pino({ level: process.env.LOG_LEVEL || 'info' });
@@ -249,8 +250,8 @@ export class RaftAdapter {
           if (this.applyHandler) {
             try {
               this.applyHandler(data);
-            } catch (err: any) {
-              logger.error({ err: err as Error }, `[RaftAdapter] applyHandler error: ${err.message}`);
+            } catch (err: unknown) {
+              logger.error({ err }, `[RaftAdapter] applyHandler error: ${getErrorMessage(err)}`);
             }
           }
           this.committedCount++;
@@ -307,9 +308,9 @@ export class RaftAdapter {
       this.node = raftNode;
 
       logger.info({ nodeId: this.config.id }, '[RaftAdapter] Initialized with @maboke123/raft-core');
-    } catch (err: any) {
+    } catch (err: unknown) {
       throw new SqlVecError(
-        `Failed to initialize @maboke123/raft-core: ${err.message}`,
+        `Failed to initialize @maboke123/raft-core: ${getErrorMessage(err)}`,
         SqlVecErrorCode.INTERNAL_ERROR,
       );
     }
@@ -343,8 +344,8 @@ export class RaftAdapter {
           this.applyHandler(data);
         }
         return { index: '0', term: '0' };
-      } catch (applyErr: any) {
-        throw new SqlVecError(`Force propose apply failed: ${applyErr.message}`, SqlVecErrorCode.INTERNAL_ERROR);
+      } catch (applyErr: unknown) {
+        throw new SqlVecError(`Force propose apply failed: ${getErrorMessage(applyErr)}`, SqlVecErrorCode.INTERNAL_ERROR);
       }
     }
 
@@ -372,9 +373,9 @@ export class RaftAdapter {
         index: String(result.index ?? 0),
         term: String(this.node.getCurrentTerm()),
       };
-    } catch (err: any) {
+    } catch (err: unknown) {
       if (err instanceof SqlVecError) throw err;
-      throw new SqlVecError(`Raft propose failed: ${err.message}`, SqlVecErrorCode.INTERNAL_ERROR);
+      throw new SqlVecError(`Raft propose failed: ${getErrorMessage(err)}`, SqlVecErrorCode.INTERNAL_ERROR);
     }
   }
 
@@ -394,9 +395,9 @@ export class RaftAdapter {
           this.applyHandler(data);
         }
         return;
-      } catch (applyErr: any) {
+      } catch (applyErr: unknown) {
         throw new SqlVecError(
-          `Force propose-and-wait apply failed: ${applyErr.message}`,
+          `Force propose-and-wait apply failed: ${getErrorMessage(applyErr)}`,
           SqlVecErrorCode.INTERNAL_ERROR,
         );
       }
@@ -421,9 +422,9 @@ export class RaftAdapter {
           SqlVecErrorCode.NOT_LEADER,
         );
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       if (err instanceof SqlVecError) throw err;
-      throw new SqlVecError(`Raft propose failed: ${err.message}`, SqlVecErrorCode.INTERNAL_ERROR);
+      throw new SqlVecError(`Raft propose failed: ${getErrorMessage(err)}`, SqlVecErrorCode.INTERNAL_ERROR);
     }
   }
 
@@ -640,8 +641,8 @@ export class RaftAdapter {
     if (this.node) {
       try {
         this.node.stop();
-      } catch (err: any) {
-        logger.warn({ err: err as Error }, '[RaftAdapter] Error stopping RaftNode');
+      } catch (err: unknown) {
+        logger.warn({ err }, '[RaftAdapter] Error stopping RaftNode');
       }
       this.node = null;
     }
@@ -649,8 +650,8 @@ export class RaftAdapter {
     if (this.transport) {
       try {
         this.transport.stop();
-      } catch {
-        // ignore
+      } catch (err: unknown) {
+        console.warn('[RaftAdapter] Transport stop failed:', err);
       }
       this.transport = null;
     }
@@ -658,8 +659,8 @@ export class RaftAdapter {
     if (this.originalTcpTransport) {
       try {
         this.originalTcpTransport.stop();
-      } catch {
-        // ignore
+      } catch (err: unknown) {
+        console.warn('[RaftAdapter] Original TCP transport stop failed:', err);
       }
       this.originalTcpTransport = null;
     }
@@ -667,8 +668,8 @@ export class RaftAdapter {
     if (this.sqliteStorage) {
       try {
         this.sqliteStorage.close();
-      } catch {
-        // ignore
+      } catch (err: unknown) {
+        console.warn('[RaftAdapter] SQLite storage close failed:', err);
       }
       this.sqliteStorage = null;
     }
@@ -719,10 +720,10 @@ export class RaftAdapter {
     try {
       await storage.compactLogs(lastIncludedIndex);
       logger.info(`[RaftAdapter] Logs compacted at index ${lastIncludedIndex}`);
-    } catch (err: any) {
+    } catch (err: unknown) {
       logger.warn(
-        { err: err as Error },
-        `[RaftAdapter] Log compaction failed at index ${lastIncludedIndex}: ${err.message} — continuing`,
+        { err },
+        `[RaftAdapter] Log compaction failed at index ${lastIncludedIndex}: ${getErrorMessage(err)} — continuing`,
       );
     }
   }

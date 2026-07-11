@@ -138,6 +138,8 @@ export class BatchedRaftTransport implements Transport {
         const frame = encodeWireBuffer({ requestId: respRequestId, msg: response as any });
         this.transport.sendToPeer(respPeerNumId, frame);
       })
-      .catch(() => {});
+      .catch((err: unknown) => {
+        console.warn('[BatchedRaftTransport] Handler error:', err);
+      });
   }
 }
