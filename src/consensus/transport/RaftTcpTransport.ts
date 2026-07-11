@@ -47,7 +47,7 @@ export interface RaftTcpTransportConfig {
     cert: Buffer | string;
     key: Buffer | string;
     ca: Buffer | string;
-    /** certificate identity verification options。defaults to backward-compatible value if omitted（raft-node-{id} CN/SAN）。 */
+    /** certificate identity verification options. defaults to backward-compatible value if omitted (raft-node-{id} CN/SAN). */
     verify?: import('./ConnectionPool').PeerTlsVerifyOptions;
   };
   /** connection timeout (ms, default 5000) */
@@ -124,7 +124,7 @@ export class RaftTcpTransport extends EventEmitter {
   }
 
   /**
-   * start physical transport layer：start TLS server + initialize ConnectionPool。
+   * Start physical transport layer: start TLS server + initialize ConnectionPool.
    */
   async start(): Promise<void> {
     if (this._started) return;
