@@ -1,0 +1,41 @@
+{
+  "name": "@agentix-e/db-cluster-adapter",
+  "version": "0.1.0",
+  "description": "db-cluster Raft consensus adapter implementing db-operations interfaces",
+  "type": "module",
+  "private": true,
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "clean": "rm -rf dist",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@agentix-e/db-operations-core": "file:../../../db-operations/packages/core",
+    "@agentix-e/db-operations-health": "file:../../../db-operations/packages/health",
+    "@agentix-e/db-operations-metrics": "file:../../../db-operations/packages/metrics",
+    "@agentix-e/db-operations-monitor": "file:../../../db-operations/packages/monitor",
+    "@agentix-e/db-operations-audit": "file:../../../db-operations/packages/audit",
+    "@agentix-e/db-operations-observability": "file:../../../db-operations/packages/observability",
+    "@agentix-e/db-cluster": "file:../../"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.0",
+    "vitest": "^1.6.0"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "MIT"
+}
