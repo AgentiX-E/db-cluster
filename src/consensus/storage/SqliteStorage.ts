@@ -57,6 +57,16 @@ export interface SqliteStorageOptions {
   maxLogSize?: number;
 }
 
+/**
+ * Configuration for log compaction behavior.
+ */
+export interface CompactionConfig {
+  /** Number of log entries before triggering compaction (0 = use constructor default) */
+  threshold: number;
+  /** Target number of entries after compaction */
+  compactTarget: number;
+}
+
 export interface RaftLogEntry {
   index: number;
   term: number;
@@ -114,6 +124,9 @@ export class SqliteStorage {
   /** Set to true at the end of open() — guards all prepared statement usage. */
   private _initialized: boolean = false;
 
+  // ── Compaction Configuration ──────────────────
+  private compactionConfig?: CompactionConfig;
+
   // ── Group Commit (E5-WAL2) ────────────────────
   /** Pending group commit queue — collects callbacks. */
   private groupCommitQueue: Array<{ resolve: () => void; reject: (err: Error) => void }> = [];
@@ -148,6 +161,24 @@ export class SqliteStorage {
    */
   setPreTruncationHook(hook: () => Promise<void>): void {
     this.preTruncationHook = hook;
+  }
+
+  /**
+   * Configure log compaction behavior.
+   *
+   * @param cfg - Compaction configuration
+   *   - threshold: log entries before triggering compact (0 = use maxLogSize)
+   *   - compactTarget: target entries after compact
+   */
+  setCompactionConfig(cfg: CompactionConfig): void {
+    this.compactionConfig = cfg;
+  }
+
+  /**
+   * Get the current compaction configuration, if set.
+   */
+  getCompactionConfig(): CompactionConfig | undefined {
+    return this.compactionConfig;
   }
 
   constructor(opts: SqliteStorageOptions) {
