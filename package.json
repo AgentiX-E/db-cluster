@@ -23,9 +23,13 @@
     "clean": "rm -rf dist",
     "changeset": "changeset",
     "version": "changeset version",
-    "release": "npm run build && changeset publish"
+    "release": "npm run build && changeset publish",
+    "bench": "tsx bench/run-all.ts",
+    "bench:ycsb": "tsx bench/ycsb/run-ycsb.ts"
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "keywords": [
     "database",
     "cluster",
