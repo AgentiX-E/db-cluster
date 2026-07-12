@@ -453,7 +453,7 @@ export class RaftGroupManager implements IConsensusLayer {
       peers: peers.map((p) => p.raftIndex),
       electionTick,
       heartbeatTick: 2,
-      preVote: false,
+      preVote: true,
       checkQuorum: true,
       tickIntervalMs: this.tickMs,
       ...raftConfigOverrides,
@@ -1630,6 +1630,36 @@ export class RaftGroupManager implements IConsensusLayer {
       return false;
     }
     return group.removeLearner(nodeId);
+  }
+
+  /**
+   * Batch-add multiple learner nodes to a shard.
+   * All learners are added concurrently. Rejects if shard not found.
+   *
+   * @returns Array of results in the same order as nodeIds
+   */
+  async addLearners(shardId: number, nodeIds: string[]): Promise<boolean[]> {
+    const group = this.groups.get(shardId);
+    if (!group) {
+      logger.warn(`[RaftGroupManager] Cannot add learners: shard ${shardId} not found`);
+      return nodeIds.map(() => false);
+    }
+    return Promise.all(nodeIds.map((nodeId) => group.addLearner(nodeId)));
+  }
+
+  /**
+   * Batch-remove multiple learner nodes from a shard.
+   * All learners are removed concurrently. Rejects if shard not found.
+   *
+   * @returns Array of results in the same order as nodeIds
+   */
+  removeLearners(shardId: number, nodeIds: string[]): boolean[] {
+    const group = this.groups.get(shardId);
+    if (!group) {
+      logger.warn(`[RaftGroupManager] Cannot remove learners: shard ${shardId} not found`);
+      return nodeIds.map(() => false);
+    }
+    return nodeIds.map((nodeId) => group.removeLearner(nodeId));
   }
 
   /**

@@ -25,7 +25,11 @@ import { MessageCodec, type RaftMessage } from './MessageCodec';
 import { ConnectionPool } from './ConnectionPool';
 import type { CircuitBreakerMetric } from '../opt/CircuitBreaker';
 import { MessageCompressor } from '../helpers/MessageCompressor';
+import { getErrorMessage } from '../helpers/errorUtils';
 import { CompressionConfig } from '../../interfaces/types';
+
+import pino from 'pino';
+const logger = pino({ level: process.env.LOG_LEVEL || 'info' });
 
 // ──────────────────────────────────────────
 //  Types
