@@ -20,8 +20,12 @@
     "format": "prettier --check \"src/**/*.ts\"",
     "format:fix": "prettier --write \"src/**/*.ts\"",
     "dead": "knip",
-    "clean": "rm -rf dist"
+    "clean": "rm -rf dist",
+    "changeset": "changeset",
+    "version": "changeset version",
+    "release": "npm run build && changeset publish"
   },
+  "files": ["dist"],
   "keywords": [
     "database",
     "cluster",
