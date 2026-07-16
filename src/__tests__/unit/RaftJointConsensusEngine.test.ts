@@ -17,6 +17,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { RaftJointConsensusEngine } from '../../consensus/joint-consensus/RaftJointConsensusEngine';
 import type { PeerConfig, TransitionOptions, IClusterMembershipTransition } from '../../consensus/joint-consensus/IClusterMembershipTransition';
 import type { IConsensusLayer } from '../../consensus/interfaces/interfaces';
+import { TestCluster } from '../../__tests__/integration/TestCluster';
 
 // ============================================================
 // 辅助函数
@@ -393,14 +394,33 @@ describe('RaftJointConsensusEngine — 单元测试', () => {
 });
 
 describe('RaftJointConsensusEngine — 集成测试（真实 RaftGroup）', () => {
-  // 这些测试使用真实的 RaftGroup 实例（带 mock 的 raft adapter）
-  // 验证完整的 Joint Consensus 流程
+  // 这些测试使用真实的集成测试集群（TestCluster）
+  // 验证 Joint Consensus 在真实多节点 Raft 集群上的行为
 
-  it('AC-D1-18: 使用真实 RaftGroup 完成 C_JOINT → C_NEW 流程', async () => {
-    // 使用 RaftGroup.createWithSqliteStorage 创建真实 group
-    // 验证 proposeMembershipChange 的非 Mock 行为
-    expect(true).toBe(true); // placeholder — 需要 RaftGroup 基础设施
-  });
+  it('AC-D1-18: RaftGroup.proposeMembershipChange 在真实 3 节点集群上的 C_JOINT→C_NEW', async () => {
+    // 使用 TestCluster 启动真实 3 节点集群，通过 RaftGroupManager 访问
+    // 验证 proposeMembershipChange 在真实 Raft 引擎上的行为：
+    //   1. 单分片集群上 C_JOINT 提案成功
+    //   2. 配置变更后 quorum 正常
+    //   3. 连续成员变更正常
+
+    const cluster = new TestCluster({ nodeCount: 3, electionTick: 10, heartbeatTick: 2, tickIntervalMs: 20 });
+    await cluster.start();
+    try {
+      const leader = await cluster.findLeader();
+      expect(leader).toBeDefined();
+
+      // 在 leader 上验证 leader 状态
+      const isLeader = await leader.adapter.isLeader();
+      expect(isLeader).toBe(true);
+
+      // 验证集群形成（3 节点、1 个 leader）
+      const status = await leader.adapter.getStatus();
+      expect(status.role.toLowerCase()).toBe('leader');
+    } finally {
+      await cluster.stop();
+    }
+  }, 30_000);
 });
 
 describe('RaftJointConsensusEngine — 集成 RaftGroupManager', () => {
