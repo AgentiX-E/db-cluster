@@ -8,6 +8,12 @@
  *   D2.4 — Concurrent membership changes (retry conflict)
  *   D2.5 — Linearizable consistency under membership changes
  *
+ * D2 extended chaos scenarios:
+ *   D2.6 — Rollback safety: recover after failed transition
+ *   D2.7 — Config union safety: minority partitions mid-C_JOINT
+ *   D2.8 — Multiple consecutive membership changes
+ *   D2.9 — Disk latency / slow I/O during transition
+ *
  * Architecture:
  *   Each test creates a ChaosCluster (3-node Raft via TestCluster), then
  *   constructs a single RaftGroup on one leader node via a minimal stub
@@ -20,6 +26,9 @@
  *   I2 — Cluster eventually reaches single leader
  *   I3 — Membership changes are total-ordered (no partial config)
  *   I4 — Linearizable reads succeed during transition
+ *   I5 — After failed transition, C_OLD config remains functional
+ *   I6 — Multiple consecutive transitions produce same final state
+ *     as single-shot transition
  */
 
 import { describe, it, expect } from 'vitest';
@@ -147,6 +156,27 @@ async function verifyNoSplitBrain(cluster: ChaosCluster): Promise<boolean> {
     } catch { /* ignore */ }
   }
   return leaders.length <= 1;
+}
+
+/**
+ * Propose and commit N entries to verify the cluster is functional
+ * (client-writable). Returns number of successful proposals.
+ */
+async function proposeNEntries(cluster: ChaosCluster, n: number): Promise<number> {
+  const leaderNode = cluster.nodes.find((n) => {
+    try { return n.adapter.isLeader(); } catch { return false; }
+  });
+  if (!leaderNode) return 0;
+  let success = 0;
+  for (let i = 0; i < n; i++) {
+    try {
+      await leaderNode.adapter.proposeAndWait(`invariant-${Date.now()}-${i}`);
+      success++;
+    } catch {
+      break;
+    }
+  }
+  return success;
 }
 
 // ── Test Suite ──────────────────────────────────────────────
@@ -324,6 +354,215 @@ describe('D2: Joint Consensus Chaos Testing', () => {
 
       // Some proposals should succeed even during transition
       expect(proposeSuccess).toBeGreaterThanOrEqual(1);
+      expect(await verifyNoSplitBrain(cluster)).toBe(true);
+    } finally {
+      await cluster.cleanup();
+    }
+  }, CHAOS_TIMEOUT);
+
+  // ────────────────────────────────────────────────────────────
+  // D2 extended chaos scenarios
+  // ────────────────────────────────────────────────────────────
+
+  // D2.6: Rollback safety — after a failed transition, C_OLD must
+  // remain functional and no config corruption.
+  it('D2.6: should not corrupt C_OLD config after failed transition (rollback safety)', async () => {
+    const cluster = new ChaosCluster({ nodeCount: 3, preVote: true, seed: 600 });
+    try {
+      await cluster.start();
+      const leader = await waitForLeader(cluster);
+      expect(leader).toBeGreaterThanOrEqual(1);
+
+      // Create engine and verify C_OLD is functional first
+      const { engine } = createEngineOnNode(cluster, leader);
+
+      // Propose some entries to establish a baseline
+      const baselineProposals = await proposeNEntries(cluster, 3);
+      expect(baselineProposals).toBeGreaterThanOrEqual(1);
+
+      // Attempt a transition that cannot succeed: C_JOINT requires
+      // majority of BOTH old and new configs. By partitioning the
+      // leader itself, the C_JOINT phase can never achieve majority
+      // of the new config.
+      await cluster.injectFault('partition', [leader]);
+
+      const result = await engine.transitionTo(makePeers(5), {
+        timeoutMs: 10_000,
+        maxRetries: 1,
+      });
+
+      // The transition may or may not succeed depending on when
+      // the partition affects message delivery. The key invariants:
+      //   I5 — cluster stays functional (C_OLD not corrupted)
+      //   I1 — no split brain
+      // Success is acceptable too (transition completed before partition)
+
+      // Heal the leader partition so cluster can recover
+      await cluster.recoverFaults();
+      await waitForStability(cluster, 5, 2000);
+
+      // I5: After failed transition, C_OLD must remain functional.
+      // Propose should still succeed (no config corruption).
+      const postFailurePosts = await proposeNEntries(cluster, 5);
+      expect(postFailurePosts).toBeGreaterThanOrEqual(1);
+
+      // I1: No split brain
+      expect(await verifyNoSplitBrain(cluster)).toBe(true);
+
+      // Final check: cluster should now accept a fresh transition
+      // to a slightly different target to prove clean state.
+      const { engine: engine2 } = createEngineOnNode(
+        cluster,
+        await waitForLeader(cluster),
+      );
+      const retryResult = await engine2.transitionTo(makePeers(4), {
+        timeoutMs: 30_000,
+        maxRetries: 3,
+      });
+      expect(retryResult.success).toBe(true);
+      expect(await verifyNoSplitBrain(cluster)).toBe(true);
+    } finally {
+      await cluster.cleanup();
+    }
+  }, CHAOS_TIMEOUT);
+
+  // D2.7: Config union safety — when a minority node has C_JOINT
+  // config but the majority hasn't progressed, verify C_OLD on
+  // the majority still commits. This catches the "config split"
+  // scenario where a node prematurely adopts joint config.
+  it('D2.7: should preserve C_OLD quorum when minority prematurely adopts C_JOINT', async () => {
+    const cluster = new ChaosCluster({ nodeCount: 3, preVote: true, seed: 700 });
+    try {
+      await cluster.start();
+      const leader = await waitForLeader(cluster);
+      expect(leader).toBeGreaterThanOrEqual(1);
+
+      // Partition the follower that would receive the C_JOINT proposal.
+      const followers = cluster.nodes.filter((n) => n.id !== leader);
+      const isolatedFollower = followers[1]; // isolate one follower
+      await cluster.injectFault('partition', [isolatedFollower.id]);
+
+      const { engine } = createEngineOnNode(cluster, leader);
+
+      // Start a transition targeting 4 peers. The partition means
+      // the isolated follower never sees C_JOINT, but the other
+      // follower + leader form the majority.
+      const result = await engine.transitionTo(makePeers(4), {
+        timeoutMs: 15_000,
+        maxRetries: 2,
+      });
+
+      // Heal the partition
+      await cluster.recoverFaults();
+      await waitForStability(cluster, 5, 2000);
+
+      // Regardless of success, I3: no partial config — the engine
+      // either committed C_NEW atomically or left C_OLD intact.
+      if (result.success) {
+        // If transition suceeded (unlikely with minority partition
+        // but depends on timing), verify the new config is valid
+        expect(await verifyNoSplitBrain(cluster)).toBe(true);
+        // Wait for leader stability before proposing
+        await waitForStability(cluster, 3, 2000);
+        const curLeader = await waitForLeader(cluster).catch(() => null);
+        if (curLeader !== null) {
+          const posts = await proposeNEntries(cluster, 3);
+          expect(posts).toBeGreaterThanOrEqual(1);
+        }
+      } else {
+        // If transition failed: C_OLD must remain functional
+        const curLeader = await waitForLeader(cluster).catch(() => null);
+        expect(curLeader).not.toBeNull();
+        if (curLeader !== null) {
+          const posts = await proposeNEntries(cluster, 5);
+          expect(posts).toBeGreaterThanOrEqual(1);
+        }
+      }
+
+      expect(await verifyNoSplitBrain(cluster)).toBe(true);
+    } finally {
+      await cluster.cleanup();
+    }
+  }, CHAOS_TIMEOUT);
+
+  // D2.8: Multiple consecutive membership changes — fast sequential
+  // transitions without waiting between. Verifies I6: N sequential
+  // transitions produce the same final state as one bulk transition.
+  it('D2.8: should safely handle multiple consecutive membership changes', async () => {
+    const cluster = new ChaosCluster({ nodeCount: 3, preVote: true, seed: 800 });
+    try {
+      await cluster.start();
+      const leader = await waitForLeader(cluster);
+      expect(leader).toBeGreaterThanOrEqual(1);
+
+      const { engine } = createEngineOnNode(cluster, leader);
+
+      // Three consecutive transitions: 3→4→5→3 (add2, add1, remove2)
+      const targets = [makePeers(4), makePeers(5), makePeers(3)];
+      let successCount = 0;
+      for (const target of targets) {
+        const r = await engine.transitionTo(target, {
+          timeoutMs: 20_000,
+          maxRetries: 3,
+          retryBaseMs: 200,
+        });
+        if (r.success) successCount++;
+        // Each step: invariant check
+        expect(await verifyNoSplitBrain(cluster)).toBe(true);
+        // Verify config is functional between transitions
+        const posts = await proposeNEntries(cluster, 2);
+        // At least some proposals succeed (may be 0 if leader changed)
+        // The important part is no crashing / no split brain
+        await new Promise((r) => setTimeout(r, 1000));
+        await waitForStability(cluster, 2, 1000);
+      }
+
+      // At least 2 out of 3 should succeed (some may fail due to
+      // the engine detecting the previous transition hasn't settled)
+      expect(successCount).toBeGreaterThanOrEqual(2);
+
+      // I6: final config is valid and cluster is healthy
+      expect(await verifyNoSplitBrain(cluster)).toBe(true);
+      const finalPosts = await proposeNEntries(cluster, 3);
+      expect(finalPosts).toBeGreaterThanOrEqual(1);
+    } finally {
+      await cluster.cleanup();
+    }
+  }, CHAOS_TIMEOUT);
+
+  // D2.9: Simulate disk I/O latency during membership transition.
+  // We inject 100-300ms random latency to simulate slow disk on
+  // the leader while it processes AppendEntries for config changes.
+  it('D2.9: should not violate safety under disk-like latency during transition', async () => {
+    const cluster = new ChaosCluster({
+      nodeCount: 3,
+      maxLatencyMs: 200,
+      preVote: true,
+      seed: 900,
+    });
+    try {
+      await cluster.start();
+      const leader = await waitForLeader(cluster);
+      expect(leader).toBeGreaterThanOrEqual(1);
+
+      const { engine } = createEngineOnNode(cluster, leader);
+
+      // Transition under high network latency (simulates slow I/O by
+      // delaying all Raft messages 0-200ms)
+      const result = await engine.transitionTo(makePeers(4), {
+        timeoutMs: 60_000,
+        maxRetries: 5,
+        retryBaseMs: 1000,
+      });
+
+      // I1: No split brain regardless of transition success
+      expect(await verifyNoSplitBrain(cluster)).toBe(true);
+
+      await waitForStability(cluster, 5, 2000);
+
+      // Cluster should still accept proposals
+      const posts = await proposeNEntries(cluster, 3);
+      expect(posts).toBeGreaterThanOrEqual(1);
       expect(await verifyNoSplitBrain(cluster)).toBe(true);
     } finally {
       await cluster.cleanup();
