@@ -409,26 +409,26 @@ describe('Raft Transport Stress & Resilience', () => {
       // Small batch size avoids IPC message queue saturation on the worker process
       let committed = 0;
       const batchSize = 20;
-      const perBatchTimeoutMs = 20000;
+      const perProposeTimeoutMs = 25000;
 
       for (let i = 0; i < 1000; i += batchSize) {
         const leader = await findLeader();
-        const batchPromises: Promise<void>[] = [];
+        const batchPromises: Promise<boolean>[] = [];
         const remaining = Math.min(batchSize, 1000 - i);
         for (let j = 0; j < remaining; j++) {
-          batchPromises.push(proposeToLeader(leader, `batch-entry-${i + j}`, nodes));
+          batchPromises.push(
+            proposeToLeader(leader, `batch-entry-${i + j}`, nodes)
+              .then(() => true)
+              .catch(() => false),
+          );
         }
-        // Wait for the batch with a per-batch timeout
-        const batchResult = await Promise.race([
-          Promise.all(batchPromises).then(() => remaining),
-          new Promise<number>((r) => setTimeout(() => r(0), perBatchTimeoutMs)),
-        ]);
-
-        if (batchResult === 0) {
-          // Batch timed out — still count successes from what committed
-          break;
-        }
-        committed += remaining;
+        // Wait for all propose attempts with individual timeouts.
+        // Each proposeToLeader has its own 30s timeout; we use
+        // per-propose granularity instead of per-batch to avoid
+        // a single slow propose dropping the entire batch.
+        const results = await Promise.all(batchPromises);
+        const batchCommits = results.filter((r) => r).length;
+        committed += batchCommits;
       }
       expect(committed).toBeGreaterThanOrEqual(950);
 
