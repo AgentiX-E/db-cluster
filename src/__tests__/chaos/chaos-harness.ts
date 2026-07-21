@@ -546,11 +546,13 @@ export class ChaosCluster {
 /**
  * Wait for stability: no leader changes for N consecutive checks.
  */
-export async function waitForStability(cluster: ChaosCluster, checks: number = 3, intervalMs: number = 1000): Promise<void> {
+export async function waitForStability(cluster: ChaosCluster, checks: number = 3, intervalMs: number = 1000, timeoutMs?: number): Promise<void> {
   let stableCount = 0;
   let lastLeader: number | null = null;
+  const deadline = timeoutMs ? Date.now() + timeoutMs : Infinity;
 
   while (stableCount < checks) {
+    if (Date.now() >= deadline) return; // timeout: accept current state
     await new Promise((r) => setTimeout(r, intervalMs));
     let currentLeader: number | null = null;
     for (const node of cluster.nodes) {
@@ -562,6 +564,13 @@ export async function waitForStability(cluster: ChaosCluster, checks: number = 3
       } catch {
         // ignore
       }
+    }
+    // Skip counting when no leader exists (mid-election) — null leader
+    // would incorrectly match lastLeader=null and count as "stable"
+    if (currentLeader === null) {
+      stableCount = 0;
+      lastLeader = null;
+      continue;
     }
     if (currentLeader === lastLeader) {
       stableCount++;

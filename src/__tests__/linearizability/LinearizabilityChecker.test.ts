@@ -110,14 +110,16 @@ describe('LinearizabilityChecker', () => {
     expect(LinearizabilityChecker.isLinearizable([])).toBe(true);
   });
 
-  // L.7: Unpaired call throws
-  it('L.7: should throw on unpaired call event', () => {
+  // L.7: Unpaired call silently skipped (pairEvents tolerates orphan calls from crashed clients)
+  it('L.7: should silently skip unpaired call event', () => {
     const events: Event[] = [
       makeCall('a', 'write', 'x', '1'),
-      // missing return
+      // missing return — this is a crash/abort scenario
     ];
 
-    expect(() => LinearizabilityChecker.isLinearizable(events)).toThrow('Unpaired event');
+    // pairEvents should NOT throw; it should silently skip the orphan call
+    const result = LinearizabilityChecker.isLinearizable(events);
+    expect(result).toBe(true); // empty history is trivially linearizable
   });
 
   // L.8: OperationRecorder integration
