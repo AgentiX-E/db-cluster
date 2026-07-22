@@ -62,7 +62,11 @@ export class TestCluster {
   private certs!: TestClusterCerts;
   private ports: number[] = [];
   private baseDir: string = '';
-  private dataDirs: string[] = [];
+  /**
+   * Temporary directories created for each node's Raft persistent storage.
+   * Exposed for LTS tests to monitor store file growth.
+   */
+  public dataDirs: string[] = [];
 
   /** Currently active nodes. Empty until start() resolves. */
   public nodes: TestNode[] = [];
