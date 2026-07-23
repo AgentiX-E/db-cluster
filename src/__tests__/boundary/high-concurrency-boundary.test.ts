@@ -154,40 +154,38 @@ describe('Boundary: High Concurrency', () => {
         const leader = await cluster.findLeader();
 
         // Raft serializes proposals through a single leader pipeline.
-        // Burst all 1,000 proposals simultaneously — most will time out,
-        // but the system must not crash or hang.
+        // Burst all 1,000 proposals simultaneously — the semaphore in
+        // proposeAndWait (CONCURRENCY_MAX=64) pipelines them so most
+        // succeed instead of storm-timeout.
         const start = Date.now();
         const startHeap = process.memoryUsage().heapUsed;
 
-        const promises: Promise<unknown>[] = [];
+        const promises: Promise<void>[] = [];
         for (let i = 0; i < 1_000; i++) {
           promises.push(
-            leader.adapter
-              .proposeAndWait(
-                `hc4-burst-${i}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-              )
-              .catch(() => {/* expected — RPC timeouts */}),
+            leader.adapter.proposeAndWait(
+              `hc4-burst-${i}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+            ),
           );
         }
 
-        // Wait for ALL proposals to settle (succeed or timeout)
-        await Promise.all(promises);
+        // Wait for ALL proposals to settle
+        const results = await Promise.allSettled(promises);
         const elapsed = Date.now() - start;
         const endHeap = process.memoryUsage().heapUsed;
         const heapGrowthMB = (endHeap - startHeap) / 1024 / 1024;
+        const successes = results.filter((r) => r.status === 'fulfilled').length;
+        const failures = results.filter((r) => r.status === 'rejected').length;
 
         console.log(
-          `[HC.4] 1,000 burst proposals in ${elapsed}ms ` +
-          `heapΔ=${heapGrowthMB.toFixed(1)}MB`,
+          `[HC.4] 1,000 burst proposals: ${successes} ok / ${failures} fail ` +
+          `in ${elapsed}ms, heapΔ=${heapGrowthMB.toFixed(1)}MB`,
         );
-
-        // Burst validates system resilience under extreme load:
-        // 1. No memory blowup (heap < 100MB growth)
-        // 2. Burst completes within reasonable time
-        expect(heapGrowthMB).toBeLessThan(250); // burst allocates many Promise objects
-        expect(elapsed).toBeLessThan(120_000);
+        // With semaphore > 80% should succeed
+        expect(successes).toBeGreaterThan(800);
+        expect(heapGrowthMB).toBeLessThan(200);
+      });
       });
     },
     HC_TIMEOUT,
   );
-});

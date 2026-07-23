@@ -131,12 +131,11 @@ export class RaftAdapter {
   // Stored reference for getStorage() compatibility
   private sqliteStorage: any = null;
 
-  /**
-   * Concurrency limiter for proposeAndWait. Under burst (e.g. 1K simultaneous
-   * proposals), Raft's single-pipeline design serializes commits; requesting
-   * all at once causes mass timeouts. This semaphore limits in-flight proposals
-   * to CONCURRENCY_MAX, queuing extras until prior ones complete.
-   */
+  /** Concurrency limiter for proposeAndWait (CONCURRENCY_MAX=64).
+   * Prevents burst-induced mass timeouts: Raft serializes through a single
+   * pipeline, so 1K simultaneous proposals would all time out at ~5s.
+   * The internal queue + queue timeout ensures controlled pipeline depth
+   * without blocking callers indefinitely. */
   private static readonly CONCURRENCY_MAX = 64;
   private _proposeQueue: Array<{
     data: string;
@@ -402,8 +401,12 @@ export class RaftAdapter {
    * simultaneous proposals would all time out at ~10s. The queue ensures a
    * controlled pipeline depth.
    */
+  /** Maximum time a proposal can sit in the semaphore queue (60s).
+   * Chosen to bound total burst drain: for 4,000 proposals at 64 concurrent
+   * × 30ms avg commit ≈ 60s. Lower values reject queued proposals before
+   * they get their turn. */
+
   async proposeAndWait(data: string): Promise<void> {
-    // Drain the queue first if at capacity
     if (this._inFlight >= RaftAdapter.CONCURRENCY_MAX) {
       return new Promise<void>((resolve, reject) => {
         this._proposeQueue.push({ data, resolve, reject });
@@ -462,14 +465,16 @@ export class RaftAdapter {
       throw new SqlVecError(`Raft propose failed: ${getErrorMessage(err)}`, SqlVecErrorCode.INTERNAL_ERROR);
     } finally {
       this._inFlight--;
+      // Service the next queued proposal — must be in finally so that
+      // thrown errors don't starve the queue.
+      this._serviceQueue();
     }
-
-    // Service the next queued proposal after this one completes.
-    this._serviceQueue();
   }
 
   /**
    * Pop the next queued proposal and execute it.
+   * Uses CONCURRENCY_MAX to limit in-flight proposals, preventing
+   * burst-induced mass timeouts against the single-pipeline Raft core.
    */
   private _serviceQueue(): void {
     while (this._inFlight < RaftAdapter.CONCURRENCY_MAX) {
