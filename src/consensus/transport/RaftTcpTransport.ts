@@ -84,6 +84,7 @@ export class RaftTcpTransport extends EventEmitter {
    */
   private _buffers: Map<string, Buffer> = new Map();
   private _pendingMessages: Map<number, Buffer[]> = new Map();
+  private _outstandingReconnects: Set<number> = new Set();
   private _healthCheckTimer: ReturnType<typeof setInterval> | null = null;
 
   // D2: Message compression
@@ -440,12 +441,32 @@ export class RaftTcpTransport extends EventEmitter {
    * 2) Delegate to _doSendFrame for the actual connection lookup + write.
    *    NEVER blocks the caller on TLS handshake or socket write.
    */
+  /**
+   * Guard: drainAndDrop the pending message buffer for a peer.
+   * Called from _doSendFrame when pool is gone (e.g. stop() during async
+   * compression callback). Prevents unbounded memory growth under burst.
+   */
+  private _drainPending(peerId: number): void {
+    this._pendingMessages.delete(peerId);
+  }
+
+  /**
+   * Fire-and-forget frame delivery.
+   *
+   * 1) Compress the payload (async, outside the WASM queue critical path).
+   * 2) Delegate to _doSendFrame for the actual connection lookup + write.
+   *    NEVER blocks the caller on TLS handshake or socket write.
+   */
   private _sendFrame(peerId: number, frame: Buffer, isHeartbeat: boolean): void {
     if (!this.pool) throw new Error('Transport not started');
 
     const payload = frame.subarray(4); // Strip 4-byte length header for compression
 
     const sendIt = (compressedPayload: Buffer) => {
+      if (!this.pool) {
+        this._drainPending(peerId);
+        return; // Transport stopped during async compression
+      }
       const newHeader = Buffer.alloc(4);
       newHeader.writeUInt32BE(compressedPayload.length, 0);
       const newFrame = Buffer.concat([newHeader, compressedPayload]);
@@ -477,7 +498,12 @@ export class RaftTcpTransport extends EventEmitter {
    *     ConnectionPool.onConnectionCreated fires in start().
    */
   private _doSendFrame(peerId: number, frame: Buffer, isHeartbeat: boolean): void {
-    const conn = this.pool!.tryGetConnection(peerId);
+    if (!this.pool) {
+      this._drainPending(peerId);
+      return;
+    }
+
+    const conn = this.pool.tryGetConnection(peerId);
     if (!conn) {
       if (isHeartbeat) return; // Idempotent — drop.
       // Buffer critical messages (Append, Vote, PreVote etc.) for delivery
@@ -485,8 +511,13 @@ export class RaftTcpTransport extends EventEmitter {
       const pending = this._pendingMessages.get(peerId) || [];
       pending.push(frame);
       this._pendingMessages.set(peerId, pending);
-      // Fire-and-forget reconnect trigger.
-      this._initiateConnection(peerId);
+      // Fire-and-forget reconnect — only if not already connecting
+      if (!this._outstandingReconnects.has(peerId)) {
+        this._outstandingReconnects.add(peerId);
+        this._initiateConnection(peerId).finally(() => {
+          this._outstandingReconnects.delete(peerId);
+        });
+      }
       return;
     }
 

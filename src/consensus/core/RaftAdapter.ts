@@ -131,6 +131,20 @@ export class RaftAdapter {
   // Stored reference for getStorage() compatibility
   private sqliteStorage: any = null;
 
+  /**
+   * Concurrency limiter for proposeAndWait. Under burst (e.g. 1K simultaneous
+   * proposals), Raft's single-pipeline design serializes commits; requesting
+   * all at once causes mass timeouts. This semaphore limits in-flight proposals
+   * to CONCURRENCY_MAX, queuing extras until prior ones complete.
+   */
+  private static readonly CONCURRENCY_MAX = 64;
+  private _proposeQueue: Array<{
+    data: string;
+    resolve: () => void;
+    reject: (err: unknown) => void;
+  }> = [];
+  private _inFlight = 0;
+
   constructor(config: RaftConfig) {
     this.config = config;
   }
@@ -382,8 +396,28 @@ export class RaftAdapter {
   /**
    * Propose and wait for Raft commit + local apply.
    * submitCommand already waits for commit in @maboke123/raft-core.
+   *
+   * Uses an internal semaphore (CONCURRENCY_MAX=64) to prevent burst-induced
+   * mass timeouts: Raft's single-pipeline design serializes commits, so 1K
+   * simultaneous proposals would all time out at ~10s. The queue ensures a
+   * controlled pipeline depth.
    */
   async proposeAndWait(data: string): Promise<void> {
+    // Drain the queue first if at capacity
+    if (this._inFlight >= RaftAdapter.CONCURRENCY_MAX) {
+      return new Promise<void>((resolve, reject) => {
+        this._proposeQueue.push({ data, resolve, reject });
+      });
+    }
+
+    return this._doPropose(data);
+  }
+
+  /**
+   * Internal propose executor. Runs the actual Raft submitCommand, then
+   * services the next queued proposal before returning.
+   */
+  private async _doPropose(data: string): Promise<void> {
     if (!this.node) {
       throw new SqlVecError('Raft node not initialized', SqlVecErrorCode.INTERNAL_ERROR);
     }
@@ -403,6 +437,7 @@ export class RaftAdapter {
       }
     }
 
+    this._inFlight++;
     try {
       const result = await this.node.submitCommand({
         type: 'command',
@@ -425,6 +460,22 @@ export class RaftAdapter {
     } catch (err: unknown) {
       if (err instanceof SqlVecError) throw err;
       throw new SqlVecError(`Raft propose failed: ${getErrorMessage(err)}`, SqlVecErrorCode.INTERNAL_ERROR);
+    } finally {
+      this._inFlight--;
+    }
+
+    // Service the next queued proposal after this one completes.
+    this._serviceQueue();
+  }
+
+  /**
+   * Pop the next queued proposal and execute it.
+   */
+  private _serviceQueue(): void {
+    while (this._inFlight < RaftAdapter.CONCURRENCY_MAX) {
+      const next = this._proposeQueue.shift();
+      if (!next) break;
+      this._doPropose(next.data).then(next.resolve).catch(next.reject);
     }
   }
 
