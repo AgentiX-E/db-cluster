@@ -53,12 +53,30 @@ describe('LTS: Long-Term Stability', () => {
   let lastLeader: number | null = null;
 
   beforeAll(async () => {
-    cluster = new TestCluster({ nodeCount: 3 });
-    await cluster.start();
-  }, 30_000);
+    // Retry cluster creation in case ports are in TIME_WAIT from previous tests.
+    let lastError: Error | undefined;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        cluster = new TestCluster({ nodeCount: 3 });
+        await cluster.start();
+        // Verify all nodes are healthy — leader with quorum
+        const leader = await cluster.findLeader(15_000);
+        expect(leader).toBeDefined();
+        expect(leader.adapter).toBeDefined();
+        return; // success
+      } catch (e) {
+        lastError = e as Error;
+        await cluster?.stop().catch(() => {});
+        await new Promise((r) => setTimeout(r, 2000)); // wait for TIME_WAIT
+      }
+    }
+    throw lastError ?? new Error('Failed to start cluster after 3 attempts');
+  }, 60_000);
 
   afterAll(async () => {
     await cluster.stop();
+    // Let TCP sockets fully close before next test uses ports
+    await new Promise((r) => setTimeout(r, 500));
   }, 15_000);
 
   it('LTS: should maintain stable throughput and no resource degradation under sustained load', async () => {
