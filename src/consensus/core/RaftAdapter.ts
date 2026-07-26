@@ -131,12 +131,14 @@ export class RaftAdapter {
   // Stored reference for getStorage() compatibility
   private sqliteStorage: any = null;
 
-  /** Concurrency limiter for proposeAndWait (CONCURRENCY_MAX=64).
+  /** Concurrency limiter for proposeAndWait (CONCURRENCY_MAX=128).
    * Prevents burst-induced mass timeouts: Raft serializes through a single
    * pipeline, so 1K simultaneous proposals would all time out at ~5s.
    * The internal queue + queue timeout ensures controlled pipeline depth
-   * without blocking callers indefinitely. */
-  private static readonly CONCURRENCY_MAX = 64;
+   * without blocking callers indefinitely.
+   * Sized at 128: 2× typical concurrent proposers for headroom without
+   * overloading the single-pipeline commit mutex. */
+  private static readonly CONCURRENCY_MAX = 128;
   private _proposeQueue: Array<{
     data: string;
     resolve: () => void;
@@ -396,14 +398,13 @@ export class RaftAdapter {
    * Propose and wait for Raft commit + local apply.
    * submitCommand already waits for commit in @maboke123/raft-core.
    *
-   * Uses an internal semaphore (CONCURRENCY_MAX=64) to prevent burst-induced
+   * Uses an internal semaphore (CONCURRENCY_MAX=128) to prevent burst-induced
    * mass timeouts: Raft's single-pipeline design serializes commits, so 1K
    * simultaneous proposals would all time out at ~10s. The queue ensures a
-   * controlled pipeline depth.
-   */
-  /** Maximum time a proposal can sit in the semaphore queue (60s).
-   * Chosen to bound total burst drain: for 4,000 proposals at 64 concurrent
-   * × 30ms avg commit ≈ 60s. Lower values reject queued proposals before
+   * controlled pipeline depth. */
+  /** Maximum time a proposal can sit in the semaphore queue (120s).
+   * Chosen to bound total burst drain: for 10,000 proposals at 128 concurrent
+   * × 20ms avg commit ≈ 120s. Lower values reject queued proposals before
    * they get their turn. */
 
   async proposeAndWait(data: string): Promise<void> {
