@@ -26,7 +26,8 @@
     "release": "npm run build && changeset publish",
     "bench": "tsx bench/run-all.ts",
     "bench:ycsb": "tsx bench/ycsb/run-ycsb.ts",
-    "tla-check": "bash tla/tla-check.sh"
+    "tla-check": "bash tla/tla-check.sh",
+    "docs": "typedoc"
   },
   "files": [
     "dist"
@@ -64,5 +65,29 @@
     "typescript": "^5.7.0",
     "typescript-eslint": "^8.63.0",
     "vitest": "^3.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/AgentiX-E/db-cluster.git"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
+    },
+    "./raft": {
+      "types": "./dist/consensus/core/RaftAdapter.d.ts",
+      "require": "./dist/consensus/core/RaftAdapter.js"
+    },
+    "./shard": {
+      "types": "./dist/interfaces/shard/index.d.ts",
+      "require": "./dist/interfaces/shard/index.js"
+    },
+    "./testing": {
+      "types": "./dist/testing/index.d.ts",
+      "require": "./dist/testing/index.js"
+    },
+    "./package.json": "./package.json"
   }
 }
