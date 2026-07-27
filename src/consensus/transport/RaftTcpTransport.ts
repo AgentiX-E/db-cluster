@@ -570,7 +570,7 @@ export class RaftTcpTransport extends EventEmitter {
       const escapedPrefix = prefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       const cnMatch = cn?.match(new RegExp(`^${escapedPrefix}(\\d+)$`));
       if (cnMatch) {
-        peerId = parseInt(cnMatch[1], 10);
+        peerId = parseInt(cnMatch![1]!, 10);
         break;
       }
     }

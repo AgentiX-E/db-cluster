@@ -444,8 +444,8 @@ export class RaftGroup {
 
         for (let attempt = 0; attempt < maxRetries; attempt++) {
           // Check if the C_JOINT entry commit index has been reached
-          const progress = await this.raft.getProgress();
-          if (progress.commit >= jointIndex) {
+          const progress = (await this.raft.getProgress())!;
+          if (progress.commit! >= jointIndex) {
             // Joint quorum satisfied — leader's commit in both configs
             // indicates majority in both C_old and C_new
             committed = true;
@@ -1060,8 +1060,8 @@ export class RaftGroup {
   async enforceLogLimit(): Promise<void> {
     if (this.maxLogEntries <= 0) return;
 
-    const progress = await this.raft.getProgress();
-    const logSize = progress.lastLog - progress.applied;
+    const progress = (await this.raft.getProgress())!;
+    const logSize = progress.lastLog! - progress.applied!;
     if (logSize > this.maxLogEntries) {
       logger.warn(`[RaftGroup] Log size ${logSize} exceeds limit ${this.maxLogEntries}, forcing snapshot`);
       this.raft.resetCommittedCount();

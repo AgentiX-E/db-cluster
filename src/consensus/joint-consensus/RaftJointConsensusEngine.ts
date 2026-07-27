@@ -89,7 +89,7 @@ export class RaftJointConsensusEngine implements IClusterMembershipTransition {
         jointConfig: [],
         committedStep: 'none',
         duration: 0,
-        phase: this._state?.phase ?? 'stable',
+        phase: this._state!.phase as any,
       };
     }
 
@@ -289,7 +289,7 @@ export class RaftJointConsensusEngine implements IClusterMembershipTransition {
         jointConfig: this._computeJointConfig(),
         committedStep: 'new',
         duration: Date.now() - this._state.startedAt,
-        phase: 'new',
+        phase: 'new' as any,
       };
     }
     /* c8 ignore stop */
@@ -342,8 +342,8 @@ export class RaftJointConsensusEngine implements IClusterMembershipTransition {
       nodeId: this._getChangedNodeId(this._state.oldConfig, this._state.newConfig),
       timestamp: Date.now(),
       changeId: this._state.changeId,
-      oldPeers: this._state.oldConfig.map(p => p.id),
-      newPeers: this._state.newConfig.map(p => p.id),
+      oldPeers: this._state.oldConfig.map(p => Number(p.id)),
+      newPeers: this._state.newConfig.map(p => Number(p.id)),
     };
 
     // 对每个 Raft 分片提议 Joint 变更
@@ -379,8 +379,8 @@ export class RaftJointConsensusEngine implements IClusterMembershipTransition {
       nodeId: this._getChangedNodeId(this._state.oldConfig, this._state.newConfig),
       timestamp: Date.now(),
       changeId: `${this._state.changeId}-new`,
-      oldPeers: this._state.oldConfig.map(p => p.id),
-      newPeers: this._state.newConfig.map(p => p.id),
+      oldPeers: this._state.oldConfig.map(p => Number(p.id)),
+      newPeers: this._state.newConfig.map(p => Number(p.id)),
     };
 
     for (const [shardIdStr, group] of this._getAllGroups()) {
@@ -540,7 +540,7 @@ export class RaftJointConsensusEngine implements IClusterMembershipTransition {
       try {
         const leaderId = await firstGroup.getLeader();
         if (leaderId) {
-          return [{ id: leaderId, host: 'localhost', port: 7001, role: 'voter' }];
+          return [{ id: String(leaderId), host: 'localhost', port: 7001, role: 'voter' }];
         }
       } catch {
         logger.debug('Failed to get leader, continuing to collect peers');
@@ -687,7 +687,7 @@ export class RaftJointConsensusEngine implements IClusterMembershipTransition {
       jointConfig: this._computeJointConfig(),
       committedStep: result.committedStep,
       duration: state.finishedAt - state.startedAt,
-      phase: result.success ? 'stable' : state.phase,
+      phase: (result.success ? 'stable' : state.phase) as any,
     };
 
     this._state = null;

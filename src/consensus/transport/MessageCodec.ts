@@ -193,7 +193,7 @@ export class MessageCodec {
   private static normaliseEntryData(msg: RaftMessage): void {
     if (!msg.entries) return;
     for (let i = 0; i < msg.entries.length; i++) {
-      const entry = msg.entries[i];
+      const entry = msg.entries[i]!;
       if (entry.data instanceof Uint8Array) {
         (entry as any).data = Buffer.from(entry.data);
       }
