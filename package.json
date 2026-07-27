@@ -27,7 +27,10 @@
     "bench": "tsx bench/run-all.ts",
     "bench:ycsb": "tsx bench/ycsb/run-ycsb.ts",
     "tla-check": "bash tla/tla-check.sh",
-    "docs": "typedoc"
+    "docs": "typedoc",
+    "format:check": "prettier --check \"src/**/*.ts\"",
+    "coverage": "vitest run --coverage",
+    "ci": "npm run format:check && npx tsc --noEmit && npm run test && npm run coverage"
   },
   "files": [
     "dist"
