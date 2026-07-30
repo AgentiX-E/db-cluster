@@ -80,7 +80,6 @@ export class RaftJointConsensusEngine implements IClusterMembershipTransition {
    */
   async transitionTo(peers: PeerConfig[], options?: TransitionOptions): Promise<TransitionResult> {
     if (this._lock) {
-      /* c8 ignore next 5 — lock 持有者设 _state，?. 的 null 分支不可达 */
       return {
         success: false,
         error: 'A transition is already in progress',
@@ -89,7 +88,7 @@ export class RaftJointConsensusEngine implements IClusterMembershipTransition {
         jointConfig: [],
         committedStep: 'none',
         duration: 0,
-        phase: this._state!.phase as any,
+        phase: this._state?.phase as any ?? 'unknown',
       };
     }
 
