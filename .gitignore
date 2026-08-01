@@ -4,6 +4,17 @@ dist/
 .DS_Store
 *.log
 
+# Secrets and environment (never commit credentials)
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+credentials.json
+service-account.json
+
 # Personal session notes (not part of project)
 memory/
 # Root-level misplaced file
