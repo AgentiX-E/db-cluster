@@ -70,4 +70,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Adaptive 5-minute stability cycle with single-core thresholds
 - Boundary test cross-test state pollution via per-test cluster isolation
 
+[1.0.0]: https://github.com/AgentiX-E/db-cluster/releases/tag/v1.0.0
 [0.1.0]: https://github.com/AgentiX-E/db-cluster/releases/tag/v0.1.0
+
+## [1.0.0] — 2026-08-02
+
+### Added
+
+- **Observability module** (`src/observability/`) — LoggingAdapter (pino wrapper),
+  RaftMetricsCollector (counters, gauges, histograms, Prometheus export),
+  HealthProbe (K8s liveness/readiness/startup). (I13)
+- **ADR template** — standardized architecture decision record format for all repos. (I14)
+- **ADR-004** — Joint Consensus design with two-phase membership changes.
+- **ADR-005** — Leader Fencing for split-brain prevention.
+- **ADR-006** — Observability architecture: logging, metrics, health probes.
+- **API Reference** (`docs/api-reference.md`) — complete public API with error hierarchy.
+- **SECURITY.md** — vulnerability reporting policy. (I15)
+
+### Changed
+
+- **LTS tests** refactored with adaptive thresholds for shared CI environments:
+  leader_changes tolerance 3→10, P99 tolerance 8x→50x, cluster bootstrap with
+  exponential backoff. (I8 — commit `5050154`)
+- **RaftJointConsensusEngine** `_state` null access hardened with optional chaining.
+  (commit `7c1b8ad`)
+- **CI** extended with security pipeline (`_security.yml`): npm audit, secret scan,
+  license compliance. (I12)
+- **.gitignore** hardened with `.env`, `.pem`, `.key` rules.
+
+### Fixed
+
+- Flaky LTS test crashes from TCP ECONNREFUSED + leader election timeout on single-core CI.
+  Root cause: shared CI VM P99 latency jitter. Fix: adaptive tolerance boundaries
+  with recovery-behavior focus instead of strict degradation limits. (I8)
+
+### Security
+
+- npm audit gate integrated into CI via `_security.yml`.
+- Secret scanning pattern matching (`sk-*`, `AKIA*`, `ghp_*`) in CI.
+- License compliance check (OSI-approved only).
