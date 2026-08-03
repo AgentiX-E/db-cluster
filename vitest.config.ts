@@ -49,6 +49,10 @@ export default defineConfig({
   resolve: {
     alias: {
       '@agentix-e/db-cluster': path.resolve(__dirname, './src'),
+      '@agentix-e/db-operations-chaosengine': path.resolve(
+        __dirname,
+        '../db-operations/packages/chaosengine/src',
+      ),
     },
   },
 });
