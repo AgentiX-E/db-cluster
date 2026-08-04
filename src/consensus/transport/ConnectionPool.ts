@@ -39,7 +39,7 @@ import { Mutex } from 'async-mutex';
 import { PeerCircuitBreakerWrapper, PeerCircuitBreakerOptions, CircuitBreakerMetric } from '../opt/CircuitBreaker';
 
 import pino from 'pino';
-const logger = pino({ level: process.env.LOG_LEVEL || 'info' });
+const logger = pino({ level: process.env.VITEST === 'true' ? 'silent' : (process.env.LOG_LEVEL || 'info') });
 
 // ──────────────────────────────────────────
 //  Types & Interfaces

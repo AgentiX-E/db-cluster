@@ -5,6 +5,8 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'node',
+    setupFiles: ['./vitest.setup.ts'],
+    silent: true, // suppress console noise from Raft pino logs in fork workers
     include: ['src/**/*.test.ts'],
     // Exclude the heaviest integration tests for CI speed;
     // they can be run in a separate suite.
