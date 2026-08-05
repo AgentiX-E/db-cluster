@@ -5,6 +5,34 @@ All notable changes to @agentix-e/db-cluster will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] — 2026-08-05
+
+### Added
+
+- **I17 Chaos Unification** — RaftChaosAdapter wrapping ChaosInjectingTransport as IChaosTransport
+  - Transport ID convention: `raft:<nodeId>`
+  - RaftChaosScenarios builder for common chaos patterns
+  - 27 chaos tests (RCHAOS1-5 + E2E)
+- **I19 Test Infrastructure** — vitest.setup.ts to suppress pino logs in fork workers
+  - Silent test mode via `VITEST=true` environment variable
+  - 57 test files / 584 tests passing in 28s (was 10min+ timeout)
+- **I13 Observability** — LoggingAdapter with pino + W3C trace context via AsyncLocalStorage
+  - RaftMetricsCollector with Prometheus text export
+  - HealthProbe modeled after K8s probes
+  - 28 observability tests (OBS1-11)
+
+### Security
+
+- **I12 Security Audit Pipeline** — npm audit, secret scan, license check in CI
+  - .env protection in .gitignore
+  - SECURITY.md with vulnerability reporting process
+
+### Internal
+
+- **I14 Documentation** — ADRs 001-006, API reference, architecture panorama
+- **I15 Convergence Verification** — all 477+31 tests validated
+- **I16 Release Readiness** — v1.0.0, CHANGELOG entries I8-I16, npm pack verified
+
 ## [0.1.0] — 2026-07-26
 
 ### Added
