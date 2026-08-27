@@ -19,3 +19,5 @@ service-account.json
 memory/
 # Root-level misplaced file
 /raft-core-worker.ts
+coverage/
+*.tsbuildinfo
