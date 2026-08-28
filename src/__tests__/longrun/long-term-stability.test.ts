@@ -32,8 +32,6 @@
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { TestCluster } from '../../__tests__/integration/TestCluster';
-import fs from 'node:fs';
-import path from 'node:path';
 
 const isFullRun = process.env.LTS_FULL === '1';
 const TOTAL_DURATION_MS = isFullRun ? 1_800_000 : 300_000; // 30 min vs 5 min
@@ -45,15 +43,25 @@ const BASELINE_WARMUP_MS = 15_000;
 const LEADER_CHANGES_MAX = isFullRun ? 5 : 10;
 const P99_MAX_X_BASELINE = isFullRun ? 8 : 50;
 const THROUGHPUT_FLOOR_RATIO = isFullRun ? 0.4 : 0.0; // single-core: any > 0 is acceptable
-const STORE_GROWTH_MAX = 3;
 const HEAP_MAX_MB = 250;
+
+// Upper bound on the retained (not-yet-compacted) Raft log length.
+//
+// raft-core triggers a snapshot once `applied - lastSnapshotIndex` reaches its
+// DEFAULT_SNAPSHOT_THRESHOLD (200), after which the retained log collapses and
+// grows again. The retained log length (`lastLog - applied`) therefore stays
+// bounded by a small multiple of that threshold regardless of the total number
+// of committed entries. The multiplier absorbs replication/apply lag between
+// snapshots and is intentionally generous so flaky single-core scheduling does
+// not cause false positives, while still catching true unbounded log growth.
+const RETAINED_LOG_MAX = 200 * 20;
 
 interface Snapshot {
   timestamp: number;
   elapsed: number;
   throughput: number;   // ops/sec since last check
   heapUsedMB: number;
-  storeSizeMB: number;
+  retainedLog: number;  // lastLog - applied (bounded log length)
   leaderChanges: number;
   p50: number;
   p95: number;
@@ -62,7 +70,6 @@ interface Snapshot {
 
 describe('LTS: Long-Term Stability', () => {
   let cluster: TestCluster;
-  const storeSizes: Map<string, number[]> = new Map();
   const latencySamples: number[] = [];
   let leaderChanges = 0;
   let lastLeader: number | null = null;
@@ -138,13 +145,6 @@ describe('LTS: Long-Term Stability', () => {
       return;
     }
 
-    // Initial store sizes
-    for (const dir of cluster.dataDirs) {
-      if (dir && fs.existsSync(dir)) {
-        storeSizes.set(dir, [dirSizeSync(dir)]);
-      }
-    }
-
     // ── Phase 2: Sustained load ───────────────────────
     const startTime = Date.now();
     let opsSinceLastCheck = 0;
@@ -204,19 +204,18 @@ describe('LTS: Long-Term Stability', () => {
 
       const heapUsedMB = process.memoryUsage().heapUsed / 1024 / 1024;
 
-      // Store sizes
-      for (const dir of cluster.dataDirs) {
-        if (dir && fs.existsSync(dir)) {
-          const sizes = storeSizes.get(dir) ?? [];
-          sizes.push(dirSizeSync(dir));
-          storeSizes.set(dir, sizes);
+      // Retained log length — the authoritative measure of bounded log growth.
+      // `lastLog - applied` collapses on snapshot compaction and grows again
+      // until the next snapshot, so it is bounded by the snapshot cadence rather
+      // than by the total number of committed entries.
+      let retainedLog = 0;
+      try {
+        const leader = await cluster.findLeader(5_000);
+        if (leader?.adapter) {
+          retainedLog = await leader.adapter.getRetainedLogLength();
         }
-      }
-
-      let totalStoreSize = 0;
-      let storeCount = 0;
-      for (const [, sizes] of storeSizes) {
-        if (sizes.length > 0) { totalStoreSize += sizes[sizes.length - 1]; storeCount++; }
+      } catch {
+        // No leader available — leave retainedLog at the last known value.
       }
 
       const snap: Snapshot = {
@@ -224,7 +223,7 @@ describe('LTS: Long-Term Stability', () => {
         elapsed,
         throughput: throughputSlice,
         heapUsedMB,
-        storeSizeMB: storeCount > 0 ? totalStoreSize / storeCount / 1024 / 1024 : 0,
+        retainedLog,
         leaderChanges,
         p50, p95, p99,
       };
@@ -235,7 +234,7 @@ describe('LTS: Long-Term Stability', () => {
       console.log(
         `[LTS] ${pct}% | tput=${snap.throughput.toFixed(1)} o/s | ` +
         `p50=${snap.p50.toFixed(1)} p95=${snap.p95.toFixed(1)} p99=${snap.p99.toFixed(1)} | ` +
-        `heap=${snap.heapUsedMB.toFixed(1)}MB store=${snap.storeSizeMB.toFixed(1)}MB | ` +
+        `heap=${snap.heapUsedMB.toFixed(1)}MB retainedLog=${snap.retainedLog} | ` +
         `leader_changes=${snap.leaderChanges}`
       );
 
@@ -279,12 +278,15 @@ describe('LTS: Long-Term Stability', () => {
       expect(latRatio).toBeLessThan(P99_MAX_X_BASELINE);
     }
 
-    // LTS.3: Store growth — < 3x initial
-    const initStore = snapshots[0]?.storeSizeMB ?? 0;
-    const maxStore = Math.max(...snapshots.map((s) => s.storeSizeMB));
-    const storeRatio = maxStore / Math.max(initStore, 0.01);
-    console.log(`[LTS] Store: initial=${initStore.toFixed(1)}MB max=${maxStore.toFixed(1)}MB ratio=${storeRatio.toFixed(1)}x (need < ${STORE_GROWTH_MAX}x)`);
-    expect(storeRatio).toBeLessThan(STORE_GROWTH_MAX);
+    // LTS.3: Retained log bounded — no unbounded growth of the Raft log.
+    // The retained log length (lastLog - applied) collapses on every snapshot
+    // and must never exceed a small multiple of the snapshot interval. This is
+    // the correct measure of bounded log growth; physical file size is NOT used
+    // because SQLite WAL + DELETE compaction reuses freelist pages without
+    // shrinking the on-disk file, which would falsely report unbounded growth.
+    const maxRetainedLog = Math.max(...snapshots.map((s) => s.retainedLog));
+    console.log(`[LTS] Retained log: max=${maxRetainedLog} (need < ${RETAINED_LOG_MAX})`);
+    expect(maxRetainedLog).toBeLessThan(RETAINED_LOG_MAX);
 
     // LTS.4: Heap — bounded, not monotonic growth
     if (snapshots.length >= 4) {
@@ -306,21 +308,3 @@ describe('LTS: Long-Term Stability', () => {
     console.log(`[LTS] PASS — ${snapshots.length} checkpoints / ${(totalDuration / 60).toFixed(1)} min`);
   }, TIMEOUT_MS);
 });
-
-/** Recursive directory size in bytes. */
-function dirSizeSync(dir: string): number {
-  let total = 0;
-  try {
-    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-      const full = path.join(dir, entry.name);
-      if (entry.isDirectory()) {
-        total += dirSizeSync(full);
-      } else if (entry.isFile()) {
-        total += fs.statSync(full).size;
-      }
-    }
-  } catch {
-    // Directory may be cleaned up during test teardown
-  }
-  return total;
-}

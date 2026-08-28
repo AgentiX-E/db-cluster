@@ -91,6 +91,33 @@ describe('AC 34.6: getAppliedIndex', () => {
   });
 });
 
+describe('AC 34.6b: getRetainedLogLength', () => {
+  it('returns 0 before init (empty progress)', async () => {
+    await expect(new RaftAdapter(minimalConfig()).getRetainedLogLength()).resolves.toBe(0);
+  });
+
+  it('computes lastLog - applied when progress is available', async () => {
+    const adapter = new RaftAdapter(minimalConfig());
+    // Simulate a healthy node with a bounded retained log.
+    (adapter as any).node = {
+      getCommittedIndex: () => 150,
+      getLastApplied: () => 140,
+      getLastLogIndex: () => 142,
+    };
+    await expect(adapter.getRetainedLogLength()).resolves.toBe(2);
+  });
+
+  it('clamps negative values to zero (applied ahead of lastLog)', async () => {
+    const adapter = new RaftAdapter(minimalConfig());
+    (adapter as any).node = {
+      getCommittedIndex: () => 100,
+      getLastApplied: () => 101,
+      getLastLogIndex: () => 100,
+    };
+    await expect(adapter.getRetainedLogLength()).resolves.toBe(0);
+  });
+});
+
 describe('AC 34.7: getCommitIndex', () => {
   it('returns 0 before init', async () => {
     await expect(new RaftAdapter(minimalConfig()).getCommitIndex()).resolves.toBe(0);

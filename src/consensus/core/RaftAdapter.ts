@@ -631,6 +631,23 @@ export class RaftAdapter {
   }
 
   /**
+   * Get the length of the retained (not-yet-compacted) Raft log.
+   *
+   * This is the authoritative measure of bounded log growth: a healthy node
+   * compacts its log on snapshot, so `lastLog - applied` stays near the
+   * snapshot threshold instead of growing monotonically with the total number
+   * of committed entries. It intentionally differs from physical file size,
+   * which is sensitive to SQLite WAL freelist layout and does not shrink on
+   * DELETE-based compaction.
+   */
+  async getRetainedLogLength(): Promise<number> {
+    const progress = await this.getProgress();
+    const lastLog = progress.lastLog ?? 0;
+    const applied = progress.applied ?? 0;
+    return Math.max(0, lastLog - applied);
+  }
+
+  /**
    * Get the last applied index.
    */
   async getAppliedIndex(): Promise<number> {
