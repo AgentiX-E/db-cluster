@@ -106,8 +106,22 @@ export class SqliteLogStorage implements LogStorage {
     const snapshotIndex = this.sqlite.getSnapshotIndex();
     const snapTermBuf = this.sqlite.getKv(KV_SNAP_TERM);
     const snapshotTerm = snapTermBuf ? Number(snapTermBuf.toString()) : 0;
-    const lastIndex = this.sqlite.getLastIndex();
-    const lastTerm = lastIndex > 0 ? this.sqlite.getTerm(lastIndex) : 0;
+
+    // raft-core's LogStorage contract requires the invariant `lastIndex >=
+    // snapshotIndex`: the snapshot covers everything up to `snapshotIndex`, so
+    // the "last retained index" never drops below that boundary even when
+    // compaction removed every on-disk row (leaving the raft_log table empty).
+    // A bare `getLastIndex()` returns 0 on an empty table, which would corrupt
+    // LogManager.lastIndex and later trip `Entry index X does not match expected
+    // index 1` on the next AppendEntries. Clamp it to the snapshot boundary.
+    const tableLastIndex = this.sqlite.getLastIndex();
+    const lastIndex = Math.max(tableLastIndex, snapshotIndex);
+
+    // When the log tail coincides with the snapshot boundary, the authoritative
+    // term is the snapshot term (the on-disk row for that index was compacted
+    // away); otherwise read the term of the surviving tail entry.
+    const lastTerm =
+      lastIndex > snapshotIndex ? this.sqlite.getTerm(lastIndex) : snapshotTerm;
 
     return { snapshotIndex, snapshotTerm, lastIndex, lastTerm };
   }

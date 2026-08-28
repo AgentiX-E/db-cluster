@@ -180,6 +180,58 @@ describe('SqliteLogStorage', () => {
     expect(meta.snapshotTerm).toBe(1);
   });
 
+  it('should preserve lastIndex == snapshotIndex when compaction empties the log', async () => {
+    // Regression: when compaction removes every on-disk row, a naive
+    // getLastIndex() returns 0, corrupting the raft-core invariant that
+    // lastIndex >= snapshotIndex. This caused the AppendEntries
+    // LogInconsistencyError ("Entry index X does not match expected index 1").
+    await log.append([
+      { index: 1, term: 1, type: LogEntryType.COMMAND, command: { type: 'cmd', payload: 'a' } },
+      { index: 2, term: 1, type: LogEntryType.COMMAND, command: { type: 'cmd', payload: 'b' } },
+      { index: 3, term: 2, type: LogEntryType.COMMAND, command: { type: 'cmd', payload: 'c' } },
+    ]);
+
+    // Compaction covers the entire retained log, leaving the table empty.
+    await log.compact(3, 2);
+
+    const meta = await log.readMeta();
+    expect(meta.snapshotIndex).toBe(3);
+    expect(meta.snapshotTerm).toBe(2);
+    expect(meta.lastIndex).toBe(3);
+    expect(meta.lastTerm).toBe(2);
+  });
+
+  it('should preserve lastIndex == snapshotIndex when reset empties the log', async () => {
+    await log.append([
+      { index: 1, term: 1, type: LogEntryType.COMMAND, command: { type: 'cmd', payload: 'a' } },
+      { index: 2, term: 1, type: LogEntryType.COMMAND, command: { type: 'cmd', payload: 'b' } },
+    ]);
+
+    await log.reset(5, 3);
+
+    const meta = await log.readMeta();
+    expect(meta.snapshotIndex).toBe(5);
+    expect(meta.snapshotTerm).toBe(3);
+    expect(meta.lastIndex).toBe(5);
+    expect(meta.lastTerm).toBe(3);
+  });
+
+  it('should report lastIndex from surviving tail when not fully compacted', async () => {
+    await log.append([
+      { index: 1, term: 1, type: LogEntryType.COMMAND, command: { type: 'cmd', payload: 'a' } },
+      { index: 2, term: 1, type: LogEntryType.COMMAND, command: { type: 'cmd', payload: 'b' } },
+      { index: 3, term: 2, type: LogEntryType.COMMAND, command: { type: 'cmd', payload: 'c' } },
+    ]);
+
+    // Partial compaction: index 3 survives, so lastIndex reflects it.
+    await log.compact(2, 1);
+
+    const meta = await log.readMeta();
+    expect(meta.snapshotIndex).toBe(2);
+    expect(meta.lastIndex).toBe(3);
+    expect(meta.lastTerm).toBe(2);
+  });
+
   it('should reset logs to snapshot boundary', async () => {
     await log.append([
       { index: 1, term: 1, type: LogEntryType.COMMAND, command: { type: 'cmd', payload: 'a' } },
