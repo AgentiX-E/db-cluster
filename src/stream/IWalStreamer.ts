@@ -12,6 +12,7 @@
  */
 
 import type { LogEntry } from "../interfaces/types";
+import type { IWalStorage } from "../interfaces/wal/IWalStorage";
 
 /**
  * A structured event emitted from the WAL stream.
@@ -97,7 +98,7 @@ export interface IWalStreamer {
   // ── Lifecycle ─────────────────────────────────────────────
 
   /** Initialize the streamer with a WAL storage backend and optional config. */
-  init(config?: Partial<WalStreamConfig>): Promise<void>;
+  init(storage: IWalStorage, config?: Partial<WalStreamConfig>): Promise<void>;
 
   /** Start streaming (begin tailing new entries). */
   start(): Promise<void>;

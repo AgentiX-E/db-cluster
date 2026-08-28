@@ -63,8 +63,8 @@ export class WalStreamer implements IWalStreamer {
     }
     // Discover the current high-water mark
     const lastRes = await storage.lastEntry();
-    if (lastRes.ok && lastRes.value) {
-      this._lastEmittedIndex = lastRes.value.index;
+    if (lastRes.success && lastRes.data) {
+      this._lastEmittedIndex = lastRes.data.index;
     }
   }
 
@@ -133,9 +133,9 @@ export class WalStreamer implements IWalStreamer {
       const end = Math.min(current + this.config.replayBatchSize - 1, toIndex);
       const res = await this.storage.readRange(current, end + 1);
 
-      if (!res.ok || !res.value) break;
+      if (!res.success || !res.data) break;
 
-      for (const entry of res.value) {
+      for (const entry of res.data) {
         const event = this.entryToEvent(entry);
         if (!this.matchesFilter(event, filter)) continue;
 
@@ -193,9 +193,9 @@ export class WalStreamer implements IWalStreamer {
 
     let totalReplayed = 0;
     const currentLastRes = await this.storage.lastEntry();
-    if (!currentLastRes.ok || !currentLastRes.value) return 0;
+    if (!currentLastRes.success || !currentLastRes.data) return 0;
 
-    const currentLastIndex = currentLastRes.value.index;
+    const currentLastIndex = currentLastRes.data.index;
 
     for (const sub of subs) {
       // Start from lastAckedIndex+1 (acked means processed up to that index),
@@ -237,12 +237,12 @@ export class WalStreamer implements IWalStreamer {
 
     try {
       const lastRes = await this.storage.lastEntry();
-      if (!lastRes.ok || !lastRes.value) {
+      if (!lastRes.success || !lastRes.data) {
         this._polling = false;
         return;
       }
 
-      const latestIndex = lastRes.value.index;
+      const latestIndex = lastRes.data.index;
       if (latestIndex <= this._lastEmittedIndex) {
         this._polling = false;
         return;
@@ -253,12 +253,12 @@ export class WalStreamer implements IWalStreamer {
       const toIdx = Math.min(fromIdx + this.config.replayBatchSize - 1, latestIndex);
       const rangeRes = await this.storage.readRange(fromIdx, toIdx + 1);
 
-      if (!rangeRes.ok || !rangeRes.value) {
+      if (!rangeRes.success || !rangeRes.data) {
         this._polling = false;
         return;
       }
 
-      for (const entry of rangeRes.value) {
+      for (const entry of rangeRes.data) {
         const event = this.entryToEvent(entry);
         this._lastEmittedIndex = entry.index;
         await this._dispatchToSubscribers(event);

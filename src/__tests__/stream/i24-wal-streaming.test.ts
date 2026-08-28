@@ -12,18 +12,12 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { WalStreamer } from "../../stream/WalStreamer";
 import type { IWalStreamer, StreamEvent, StreamFilter, StreamHandler } from "../../stream/IWalStreamer";
 import type { IWalStorage } from "../../interfaces/wal/IWalStorage";
-import type { LogEntry } from "../../interfaces/types";
+import type { LogEntry, OperationResult } from "../../interfaces/types";
 
 // ── Mock WAL Storage ───────────────────────────────────────
 
-interface OperationResult<T = void> {
-  ok: boolean;
-  value?: T;
-  error?: string;
-}
-
 function okResult<T>(value: T): OperationResult<T> {
-  return { ok: true, value };
+  return { success: true, data: value };
 }
 
 function makeEntry(index: number, term: number, command: string, data?: unknown, ts?: number): LogEntry {
@@ -46,54 +40,60 @@ class MockWalStorage implements IWalStorage {
       index: idx,
       timestamp: Date.now(),
     } as LogEntry);
-    return { ok: true, value: idx };
+    return { success: true, data: idx };
   }
 
   async appendBatch(entries: Omit<LogEntry, "index" | "timestamp">[]): Promise<OperationResult<number[]>> {
     const indices: number[] = [];
     for (const e of entries) {
       const res = await this.append(e);
-      if (res.ok && res.value) indices.push(res.value);
+      if (res.success && res.data) indices.push(res.data);
     }
-    return { ok: true, value: indices };
+    return { success: true, data: indices };
   }
 
   async read(index: number): Promise<OperationResult<LogEntry | null>> {
     const entry = this.entries[index - 1] ?? null;
-    return { ok: true, value: entry };
+    return { success: true, data: entry };
   }
 
   async readRange(startIndex: number, endIndex: number): Promise<OperationResult<LogEntry[]>> {
     // endIndex is exclusive
-    return { ok: true, value: this.entries.slice(startIndex - 1, endIndex - 1) };
+    if (this.failReadRange) return { success: false, error: "readRange failure" };
+    return { success: true, data: this.entries.slice(startIndex - 1, endIndex - 1) };
   }
 
   async lastEntry(): Promise<OperationResult<LogEntry | null>> {
+    if (this.failLastEntry) return { success: false, error: "lastEntry failure" };
     const last = this.entries.length > 0 ? this.entries[this.entries.length - 1] : null;
-    return { ok: true, value: last ?? null };
+    return { success: true, data: last ?? null };
   }
 
   async length(): Promise<OperationResult<number>> {
-    return { ok: true, value: this.entries.length };
+    return { success: true, data: this.entries.length };
   }
 
   async truncate(_lastIndex: number): Promise<OperationResult> {
-    return { ok: true };
+    return { success: true };
   }
 
   async deleteFrom(_start: number): Promise<OperationResult> {
-    return { ok: true };
+    return { success: true };
   }
 
   async storeSnapshot(): Promise<OperationResult> {
-    return { ok: true };
+    return { success: true };
   }
 
   async latestSnapshot(): Promise<OperationResult<null>> {
-    return { ok: true, value: null };
+    return { success: true, data: null };
   }
 
   async close(): Promise<void> {}
+
+  // Failure-injection flags for exercising error/edge branches.
+  failLastEntry = false;
+  failReadRange = false;
 
   // Test helpers
   seedEntries(count: number, term = 1): void {
@@ -102,9 +102,9 @@ class MockWalStorage implements IWalStorage {
     }
   }
 
-  async addEntry(command = "set", data?: unknown): Promise<LogEntry> {
+  async addEntry(command = "set", data?: unknown, term = 1): Promise<LogEntry> {
     const idx = this.entries.length + 1;
-    const entry = makeEntry(idx, 1, command, data);
+    const entry = makeEntry(idx, term, command, data);
     this.entries.push(entry);
     return entry;
   }
@@ -198,13 +198,30 @@ describe("WAL2: Subscription filtering", () => {
 
     await streamer.start();
 
-    // Add entries with term=1 and term=2
-    const e1 = makeEntry(1, 1, "set");
-    mock.seedEntries(0); // we're not using seed, just entries array direct
-    // Actually, let's add properly — the mock starts empty
-    await mock.addEntry("set");
-    // For term=2 entries, add via seed with low-level access
-    // NOTE: mock.addEntry uses term=1 always, so we need special handling
+    // Tail new entries after subscribe: term=1 is filtered out, term>=2 pass.
+    await mock.addEntry("set", undefined, 1); // term=1 → filtered out
+    await mock.addEntry("set", undefined, 2); // term=2 → passes
+    await mock.addEntry("set", undefined, 3); // term=3 → passes
+
+    await delay(120);
+
+    expect(captured).toHaveLength(2);
+    expect(captured.every((e) => e.entry.term >= 2)).toBe(true);
+    await streamer.stop();
+  });
+
+  it("filter by minTerm passes entries at or above the threshold", async () => {
+    const mock = new MockWalStorage();
+    mock.seedEntries(0);
+    await mock.addEntry("set", undefined, 3);
+    await mock.addEntry("set", undefined, 2);
+    const streamer = new WalStreamer();
+    await streamer.init(mock);
+
+    const captured: StreamEvent[] = [];
+    await streamer.replay(1, 2, async (e) => { captured.push(e); }, { minTerm: 2 });
+
+    expect(captured).toHaveLength(2);
     await streamer.stop();
   });
 
@@ -740,6 +757,159 @@ describe("WAL15: Init position discovery", () => {
 
     const pos = await streamer.getPosition();
     expect(pos.entryIndex).toBe(0);
+  });
+});
+
+// ── WAL16: Error-path resilience and backpressure ─────────
+
+describe("WAL16: Error paths and backpressure", () => {
+  it("replay stops gracefully when readRange reports failure", async () => {
+    const mock = new MockWalStorage();
+    mock.seedEntries(3);
+    mock.failReadRange = true;
+
+    const streamer = new WalStreamer();
+    await streamer.init(mock);
+
+    const captured: StreamEvent[] = [];
+    const replayed = await streamer.replay(1, 3, async (e) => { captured.push(e); });
+
+    expect(replayed).toBe(0);
+    expect(captured).toHaveLength(0);
+    await streamer.stop();
+  });
+
+  it("polling returns when lastEntry reports failure", async () => {
+    const mock = new MockWalStorage();
+    mock.seedEntries(2);
+    const streamer = new WalStreamer();
+    await streamer.init(mock);
+    mock.failLastEntry = true;
+
+    await streamer.start();
+    // Give the poller a cycle to hit the failure branch and bail out.
+    await delay(150);
+
+    expect(streamer.active).toBe(true); // start() succeeded; poll loop defensively returns
+    await streamer.stop();
+  });
+
+  it("catchUp returns 0 when lastEntry reports failure", async () => {
+    const mock = new MockWalStorage();
+    const streamer = new WalStreamer();
+    await streamer.init(mock);
+
+    const sub = await streamer.subscribe("err-sub", async () => {});
+    mock.failLastEntry = true;
+
+    const replayed = await streamer.catchUp(sub.id);
+    expect(replayed).toBe(0);
+    await streamer.stop();
+  });
+
+  it("backpressure blocks when the subscriber buffer reaches maxBufferSize", async () => {
+    const mock = new MockWalStorage();
+    mock.seedEntries(1);
+    const streamer = new WalStreamer();
+    await streamer.init(mock, { maxBufferSize: 1, pollIntervalMs: 20 });
+
+    // Handler resolves slowly so the buffer fills before it drains,
+    // forcing the backpressure branch (`_delay`) to execute.
+    let releases: Array<() => void> = [];
+    const handler = vi.fn(async () => {
+      await new Promise<void>((resolve) => { releases.push(resolve); });
+    });
+
+    await streamer.subscribe("bp-sub", handler);
+
+    // Seed several entries so the buffer (max 1) overflows and blocks.
+    await mock.addEntry("set", { n: 1 });
+    await mock.addEntry("set", { n: 2 });
+    await mock.addEntry("set", { n: 3 });
+
+    await streamer.start();
+    await delay(150);
+
+    expect(handler).toHaveBeenCalled();
+    // Release pending handlers and shut down cleanly.
+    releases.forEach((r) => r());
+    await streamer.stop();
+  });
+
+  it("unsubscribe with an unknown subscription id is a no-op", async () => {
+    const mock = new MockWalStorage();
+    const streamer = new WalStreamer();
+    await streamer.init(mock);
+
+    // Unknown id hits the `if (!sub) return` early-exit branch.
+    await streamer.unsubscribe("does-not-exist");
+    await streamer.stop();
+  });
+
+  it("catchUp without init throws", async () => {
+    const streamer = new WalStreamer();
+    await expect(streamer.catchUp("sub")).rejects.toThrow("not initialized");
+  });
+
+  it("catchUp with no matching subscriber returns zero", async () => {
+    const mock = new MockWalStorage();
+    mock.seedEntries(2);
+    const streamer = new WalStreamer();
+    await streamer.init(mock);
+
+    // No subscription registered → `catchUp` filter yields zero subs.
+    const replayed = await streamer.catchUp("unknown-id");
+    expect(replayed).toBe(0);
+    await streamer.stop();
+  });
+
+  it("double start does not create a second poll timer", async () => {
+    const mock = new MockWalStorage();
+    mock.seedEntries(1);
+    const streamer = new WalStreamer();
+    await streamer.init(mock, { pollIntervalMs: 20 });
+
+    await streamer.start();
+    await streamer.start(); // second start hits `if (this._pollTimer) return`
+
+    expect(streamer.active).toBe(true);
+    await streamer.stop();
+  });
+
+  it("polling bails out when readRange reports failure", async () => {
+    const mock = new MockWalStorage();
+    mock.seedEntries(3);
+    const streamer = new WalStreamer();
+    await streamer.init(mock, { pollIntervalMs: 20 });
+
+    const captured: StreamEvent[] = [];
+    await streamer.subscribe("poll-sub", async (e) => { captured.push(e); });
+
+    await streamer.start();
+    // Fail the range read after a successful lastEntry, so polling hits the
+    // `if (!rangeRes.success ...) return` branch inside _pollNewEntries.
+    mock.failReadRange = true;
+    await mock.addEntry("set", undefined, 1);
+
+    await delay(150);
+    await streamer.stop();
+    // No crash; the poll loop defensively returned.
+    expect(streamer.active).toBe(false);
+  });
+
+  it("fromIndex filter excludes entries below the start index", async () => {
+    const mock = new MockWalStorage();
+    mock.seedEntries(5);
+    const streamer = new WalStreamer();
+    await streamer.init(mock);
+
+    const captured: StreamEvent[] = [];
+    await streamer.replay(1, 5, async (e) => { captured.push(e); }, { fromIndex: 3 });
+
+    // Only entries with index >= 3 pass the fromIndex filter.
+    expect(captured).toHaveLength(3);
+    expect(captured.every((e) => e.entry.index >= 3)).toBe(true);
+    await streamer.stop();
   });
 });
 
