@@ -33,7 +33,6 @@ export default defineConfig({
         'src/consensus/interfaces/**',
         'src/types/**',
         // Debug / diagnostic files
-        'src/debug-c3.test.ts',
         'src/__tests__/debug-*.ts',
         // Performance benchmarks (not unit-tested)
         'src/__tests__/performance/**',
