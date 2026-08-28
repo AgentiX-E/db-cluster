@@ -29,6 +29,7 @@ export default defineConfig({
         'src/**/__tests__/**',
         'src/**/*.d.ts',
         'src/index.ts',
+        'src/**/index.ts',
         'src/interfaces/**',
         'src/consensus/interfaces/**',
         'src/types/**',
