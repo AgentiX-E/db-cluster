@@ -148,6 +148,7 @@ export class PeerCircuitBreakerWrapper {
   }
 
   private _setupListeners(): void {
+    // c8 ignore next — constructor only calls this when `breaker` is set.
     if (!this.breaker) return;
     this.breaker.on('open', () => {
       this._state = 'open';
@@ -237,6 +238,8 @@ export class PeerCircuitBreakerWrapper {
       enabled: true,
       state: this._state,
       peerId: this.peerId,
+      // c8 ignore next 4 — opossum breakers always expose stats; `?? 0` guards a
+      // third-party contract change that is untestable against the real library.
       failures: stats?.failures ?? 0,
       successes: stats?.successes ?? 0,
       rejects: stats?.rejects ?? 0,
@@ -255,12 +258,15 @@ export class PeerCircuitBreakerWrapper {
       open: 'open',
       half_open: 'half-open',
     };
+    // c8 ignore next — `_state` is always one of the three keys above.
     const stateLabel = stateMap[this._state] ?? 'closed';
 
     let failureCount = 0;
     let successCount = 0;
     if (this.breaker) {
       const s = (this.breaker as any).status;
+      // c8 ignore next 2 — live breakers always expose status.stats; `?? 0` guards
+      // a third-party contract change that is untestable against the real library.
       failureCount = s?.stats?.failures ?? 0;
       successCount = s?.stats?.successes ?? 0;
     }
