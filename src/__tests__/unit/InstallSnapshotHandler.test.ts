@@ -392,4 +392,154 @@ describe('InstallSnapshotHandler - Unit', () => {
       fs.rmSync('/tmp/test-snapshots-receiver', { recursive: true, force: true });
     }
   });
+
+  //
+  // AC 20.19: sendSnapshot continues when a chunk send throws
+  //
+  it('AC 20.19: sendSnapshot continues after a chunk send failure', async () => {
+    const filePath = path.join(SNAPSHOT_DIR, 'send-fail.dat');
+    fs.writeFileSync(filePath, Buffer.alloc(5000, 'D'));
+
+    const raft = createMockRaft(1);
+    raft.step.mockImplementation(() => { throw new Error('transport-down'); });
+
+    const result = await handler.sendSnapshot(raft as any, '2', filePath, {
+      lastIncludedIndex: 300,
+      lastIncludedTerm: 3,
+      nodeId: 1,
+      shardId: 0,
+      timestamp: Date.now(),
+    });
+
+    // Chunk send failed → failCount > 0 → returns false, but does not throw.
+    expect(result).toBe(false);
+    expect(raft.step).toHaveBeenCalled();
+  });
+
+  //
+  // AC 20.20: sendSnapshot swallows an outer failure (e.g. createChunks throw)
+  //
+  it('AC 20.20: sendSnapshot returns false when chunk creation throws', async () => {
+    const raft = createMockRaft(1);
+    // A directory path makes fs.openSync/readSync throw inside createChunks.
+    const dirPath = path.join(SNAPSHOT_DIR, 'a-dir');
+    fs.mkdirSync(dirPath, { recursive: true });
+
+    const result = await handler.sendSnapshot(raft as any, '2', dirPath, {
+      lastIncludedIndex: 1,
+      lastIncludedTerm: 1,
+      nodeId: 1,
+      shardId: 0,
+      timestamp: Date.now(),
+    });
+
+    expect(result).toBe(false);
+  });
+
+  //
+  // AC 20.21: cleanStaleStates removes timed-out assembly states
+  //
+  it('AC 20.21: cleanStaleStates removes a timed-out assembly', async () => {
+    // Use a handler with a very short assembly timeout.
+    const shortHandler = new InstallSnapshotHandler(SNAPSHOT_DIR, NODE_ID, {
+      assemblyTimeoutMs: 1,
+    });
+    const raft = createMockRaft(1);
+
+    await shortHandler.handleChunk(
+      makeChunk({ data: 'stale', offset: 0, done: false }),
+      raft as any,
+      vi.fn(),
+    );
+    expect(shortHandler.getAssemblyProgress().length).toBe(1);
+
+    // Advance past the timeout, then trigger cleanStaleStates via a new chunk.
+    await new Promise((r) => setTimeout(r, 5));
+    await shortHandler.handleChunk(
+      makeChunk({ data: 'new', offset: 10, done: false, leaderId: '2', lastIncludedIndex: 200 }),
+      raft as any,
+      vi.fn(),
+    );
+
+    // The stale entry should have been pruned.
+    const progress = shortHandler.getAssemblyProgress();
+    expect(progress.some((p) => p.key.includes('stale'))).toBe(false);
+
+    shortHandler.reset();
+  });
+
+  //
+  // AC 20.22: createChunks with checksum disabled omits the checksum field
+  //
+  it('AC 20.22: createChunks omits checksum when disabled', async () => {
+    const noChecksum = new InstallSnapshotHandler(SNAPSHOT_DIR, NODE_ID, {
+      enableChecksum: false,
+    });
+    const filePath = path.join(SNAPSHOT_DIR, 'no-checksum.dat');
+    fs.writeFileSync(filePath, Buffer.alloc(100, 'E'));
+
+    const chunks: any[] = [];
+    for await (const chunk of noChecksum.createChunks(
+      filePath,
+      { lastIncludedIndex: 50, lastIncludedTerm: 1, nodeId: 1, shardId: 0, timestamp: Date.now() },
+      '1',
+      4096,
+    )) {
+      chunks.push(chunk);
+    }
+
+    expect(chunks.length).toBe(1);
+    expect(chunks[0]._checksum).toBe('');
+    noChecksum.reset();
+  });
+
+  //
+  // AC 20.23: sendSnapshot with checksum disabled sends chunks without checksum
+  //
+  it('AC 20.23: sendSnapshot omits checksum field when disabled', async () => {
+    const noChecksum = new InstallSnapshotHandler(SNAPSHOT_DIR, NODE_ID, {
+      enableChecksum: false,
+    });
+    const filePath = path.join(SNAPSHOT_DIR, 'send-no-checksum.dat');
+    fs.writeFileSync(filePath, Buffer.alloc(200, 'F'));
+
+    const raft = createMockRaft(1);
+    const result = await noChecksum.sendSnapshot(raft as any, '2', filePath, {
+      lastIncludedIndex: 100,
+      lastIncludedTerm: 1,
+      nodeId: 1,
+      shardId: 0,
+      timestamp: Date.now(),
+    });
+
+    expect(result).toBe(true);
+    // The step() payload must not carry a checksum field.
+    const stepArg = raft.step.mock.calls[0][0];
+    expect(stepArg.checksum).toBeUndefined();
+    noChecksum.reset();
+  });
+
+  //
+  // AC 20.24: createChunks reads a full chunk when file is an exact multiple
+  //
+  it('AC 20.24: createChunks reads a full chunk without subarray truncation', async () => {
+    const filePath = path.join(SNAPSHOT_DIR, 'exact-multiple.dat');
+    const data = Buffer.alloc(8192, 'G'); // exactly 2 × 4096
+    fs.writeFileSync(filePath, data);
+
+    const chunks: InstallSnapshotRequest[] = [];
+    for await (const chunk of handler.createChunks(
+      filePath,
+      { lastIncludedIndex: 50, lastIncludedTerm: 1, nodeId: 1, shardId: 0, timestamp: Date.now() },
+      '1',
+      4096,
+    )) {
+      chunks.push(chunk);
+    }
+
+    // Both chunks are exactly 4096 bytes (full reads, no truncation).
+    expect(chunks.length).toBe(2);
+    expect(chunks[0].data.length).toBe(4096);
+    expect(chunks[1].data.length).toBe(4096);
+  });
 });
