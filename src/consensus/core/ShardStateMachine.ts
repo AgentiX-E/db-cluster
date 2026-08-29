@@ -11,8 +11,9 @@
 import type { ApplicationStateMachine, Command } from '@maboke123/raft-core';
 import type { SnapshotMetaData } from '@maboke123/raft-core/dist/storage/interfaces/SnapshotStorage';
 import pino from 'pino';
+import { resolveLogLevel } from '../../observability/logLevel';
 
-const logger = pino({ level: process.env.LOG_LEVEL || 'info' });
+const logger = pino({ level: resolveLogLevel() });
 
 export interface ShardStateMachineCallbacks {
   /** Called for every committed entry. Parameters: data, (optional) index, (optional) term. */

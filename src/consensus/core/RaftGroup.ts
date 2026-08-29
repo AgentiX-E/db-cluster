@@ -40,8 +40,10 @@ import * as path from 'path';
 import * as crypto from 'crypto';
 
 import pino from 'pino';
-const logger = pino({ level: process.env.LOG_LEVEL || 'info' });
 import { IPITRHook } from '../../interfaces/IPITRHook';
+import { resolveLogLevel } from '../../observability/logLevel';
+
+const logger = pino({ level: resolveLogLevel() });
 
 // ──────────────────────────────────────────
 //  Types

@@ -17,6 +17,7 @@
 
 import pino, { type Logger as PinoLogger } from 'pino';
 import type { ILogger, LogEntry, LogLevel } from './interfaces';
+import { resolveLogLevel } from './logLevel';
 
 // ── Global logger instance (lazy) ───────────────────────────
 
@@ -25,7 +26,7 @@ let _rootLogger: PinoLogger | null = null;
 function rootLogger(): PinoLogger {
   if (!_rootLogger) {
     _rootLogger = pino({
-      level: process.env.LOG_LEVEL || 'info',
+      level: resolveLogLevel(),
       // Structured JSON in all environments. A previous development-only
       // `pino-pretty` transport was removed because `pino-pretty` is not a
       // declared dependency — any NODE_ENV=development startup crashed with
@@ -47,7 +48,10 @@ function rootLogger(): PinoLogger {
 // Lightweight trace context using Node.js AsyncLocalStorage.
 // No external deps — works with @maboke123/raft-core.
 
-const traceContext = (() => {
+// Build the trace-context adapter. The `node:async_hooks` module exists in
+// every supported Node runtime (>= 12); the catch branch only guards a
+// pre-12 environment that the test suite cannot exercise.
+function createTraceContext() {
   try {
     const { AsyncLocalStorage } = require('node:async_hooks');
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -64,10 +68,10 @@ const traceContext = (() => {
         return storage.run(traceId, fn);
       },
     };
-  } catch {
     /* c8 ignore start — `node:async_hooks` exists in every supported Node
-       runtime (>= 12); this fallback guards a pre-12 environment that the
-       test suite cannot exercise. */
+       runtime (>= 12); this catch guards a pre-12 environment that the test
+       suite cannot exercise. */
+  } catch {
     // Fallback: no trace correlation (Node < 12)
     return {
       getTraceId: () => undefined,
@@ -76,7 +80,9 @@ const traceContext = (() => {
     };
   }
   /* c8 ignore stop */
-})();
+}
+
+const traceContext = createTraceContext();
 
 // ── LoggingAdapter (ILogger-compatible) ─────────────────────
 

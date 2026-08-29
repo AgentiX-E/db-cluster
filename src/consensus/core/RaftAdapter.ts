@@ -24,8 +24,9 @@ import { SqlVecError, SqlVecErrorCode } from '../../interfaces/types';
 import type { SharedTransport } from '../../interfaces/types';
 import { getErrorMessage } from '../helpers/errorUtils';
 import pino from 'pino';
+import { resolveLogLevel } from '../../observability/logLevel';
 
-const logger = pino({ level: process.env.LOG_LEVEL || 'info' });
+const logger = pino({ level: resolveLogLevel() });
 
 // ──────────────────────────────────────────
 //  Public types (re-exported for RaftGroup)

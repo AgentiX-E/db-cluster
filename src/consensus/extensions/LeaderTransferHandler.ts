@@ -23,7 +23,8 @@ import { LeaderTransferResult } from '../../interfaces/types';
 
 import pino from 'pino';
 import { getErrorMessage } from '../helpers/errorUtils';
-const logger = pino({ level: process.env.LOG_LEVEL || 'info' });
+import { resolveLogLevel } from '../../observability/logLevel';
+const logger = pino({ level: resolveLogLevel() });
 
 // ──────────────────────────────────────────
 //  Types

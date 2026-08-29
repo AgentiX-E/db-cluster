@@ -50,7 +50,8 @@ import type { SharedTransport } from '../../interfaces/types';
 import type { CircuitBreakerMetric } from '../opt/CircuitBreaker';
 
 import pino from 'pino';
-const logger = pino({ level: process.env.LOG_LEVEL || 'info' });
+import { resolveLogLevel } from '../../observability/logLevel';
+const logger = pino({ level: resolveLogLevel() });
 
 // NodeTransportConfig reuses RaftTcpTransportConfig; no additional fields needed.
 export type NodeTransportConfig = RaftTcpTransportConfig;

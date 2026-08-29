@@ -308,3 +308,66 @@ describe('PeerCircuitBreakerWrapper lifecycle events', () => {
     cb.shutdown();
   });
 });
+
+// ── Defensive branches: `?? 0` nullish fallbacks for a third-party
+//    breaker whose stats/status shape may change ────────────────
+
+describe('PeerCircuitBreakerWrapper defensive fallbacks', () => {
+  it('_setupListeners is a no-op when the breaker is null', () => {
+    const cb = new PeerCircuitBreakerWrapper(900, { enabled: false });
+    // Force internal breaker to null and invoke the private listener wiring.
+    (cb as any).breaker = null;
+    expect(() => (cb as any)._setupListeners()).not.toThrow();
+  });
+
+  it('stats falls back to 0 when breaker stats fields are missing', () => {
+    const cb = new PeerCircuitBreakerWrapper(901);
+    // Inject a mock breaker whose `stats` object omits the numeric counters,
+    // exercising the `stats?.failures ?? 0` (and siblings) nullish branches.
+    (cb as any).breaker = { stats: {}, shutdown: () => {} };
+
+    const stats = cb.stats;
+    expect(stats.enabled).toBe(true);
+    expect(stats.failures).toBe(0);
+    expect(stats.successes).toBe(0);
+    expect(stats.rejects).toBe(0);
+    expect(stats.timeouts).toBe(0);
+    cb.shutdown();
+  });
+
+  it('stats falls back to 0 when breaker.stats is entirely absent', () => {
+    const cb = new PeerCircuitBreakerWrapper(902);
+    (cb as any).breaker = { shutdown: () => {} }; // no `stats` getter at all
+
+    const stats = cb.stats;
+    expect(stats.failures).toBe(0);
+    expect(stats.successes).toBe(0);
+    expect(stats.rejects).toBe(0);
+    expect(stats.timeouts).toBe(0);
+    cb.shutdown();
+  });
+
+  it('getMetrics falls back to 0 when breaker.status.stats is missing', () => {
+    const cb = new PeerCircuitBreakerWrapper(903);
+    // status present but stats absent, and status entirely absent.
+    (cb as any).breaker = { status: {}, shutdown: () => {} };
+    let m = cb.getMetrics();
+    expect(m.failureCount).toBe(0);
+    expect(m.successCount).toBe(0);
+
+    (cb as any).breaker = { shutdown: () => {} };
+    m = cb.getMetrics();
+    expect(m.failureCount).toBe(0);
+    expect(m.successCount).toBe(0);
+    cb.shutdown();
+  });
+
+  it('getMetrics falls back to closed state label for an unknown state', () => {
+    const cb = new PeerCircuitBreakerWrapper(904);
+    // Corrupt the internal state to an un-mapped value, exercising the
+    // `stateMap[this._state] ?? 'closed'` nullish branch.
+    (cb as any)._state = 'weird-state';
+    expect(cb.getMetrics().state).toBe('closed');
+    cb.shutdown();
+  });
+});

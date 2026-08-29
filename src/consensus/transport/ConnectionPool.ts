@@ -39,7 +39,8 @@ import { Mutex } from 'async-mutex';
 import { PeerCircuitBreakerWrapper, PeerCircuitBreakerOptions, CircuitBreakerMetric } from '../opt/CircuitBreaker';
 
 import pino from 'pino';
-const logger = pino({ level: process.env.VITEST === 'true' ? 'silent' : (process.env.LOG_LEVEL || 'info') });
+import { resolveLogLevel } from '../../observability/logLevel';
+const logger = pino({ level: process.env.VITEST === 'true' ? 'silent' : (resolveLogLevel()) });
 
 // ──────────────────────────────────────────
 //  Types & Interfaces

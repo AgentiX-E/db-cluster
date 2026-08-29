@@ -39,7 +39,8 @@ import { IConsensusLayer, IClusterTopology, TopologyChange } from '../interfaces
 import { AdaptiveElectionTimeout } from '../opt/AdaptiveElectionTimeout';
 import { AdaptiveElectionConfig, DEFAULT_ADAPTIVE_ELECTION_CONFIG } from '../../interfaces/types';
 import pino from 'pino';
-const logger = pino({ level: process.env.LOG_LEVEL || 'info' });
+import { resolveLogLevel } from '../../observability/logLevel';
+const logger = pino({ level: resolveLogLevel() });
 
 /**
  * Generate a randomized election tick count with jitter.

@@ -25,8 +25,9 @@ import type { SnapshotMetaData, Snapshot } from '@maboke123/raft-core/dist/stora
 import { LogEntryType as CoreLogEntryType } from '@maboke123/raft-core';
 import { SqliteStorage } from './SqliteStorage';
 import pino from 'pino';
+import { resolveLogLevel } from '../../observability/logLevel';
 
-const logger = pino({ level: process.env.LOG_LEVEL || 'info' });
+const logger = pino({ level: resolveLogLevel() });
 
 // ──────────────────────────────────────────
 //  Constants (raft_kv keys)

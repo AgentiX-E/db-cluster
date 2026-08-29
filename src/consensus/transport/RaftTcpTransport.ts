@@ -29,7 +29,8 @@ import { getErrorMessage } from '../helpers/errorUtils';
 import { CompressionConfig } from '../../interfaces/types';
 
 import pino from 'pino';
-const logger = pino({ level: process.env.VITEST === 'true' ? 'silent' : (process.env.LOG_LEVEL || 'info') });
+import { resolveLogLevel } from '../../observability/logLevel';
+const logger = pino({ level: process.env.VITEST === 'true' ? 'silent' : (resolveLogLevel()) });
 
 // ──────────────────────────────────────────
 //  Types

@@ -21,7 +21,8 @@
 import { AdaptiveElectionConfig, DEFAULT_ADAPTIVE_ELECTION_CONFIG } from '../../interfaces/types';
 
 import pino from 'pino';
-const logger = pino({ level: process.env.LOG_LEVEL || 'info' });
+import { resolveLogLevel } from '../../observability/logLevel';
+const logger = pino({ level: resolveLogLevel() });
 
 export class AdaptiveElectionTimeout {
   private config: AdaptiveElectionConfig;

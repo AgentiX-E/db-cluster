@@ -162,4 +162,89 @@ describe('AdaptiveElectionTimeout', () => {
     expect(aet.getAvgRtt()).toBe(0);
     expect(aet.getSampleCount()).toBe(0);
   });
+
+  it('AC 35.11: recalculate is a no-op when no RTT samples are recorded', () => {
+    const aet = new AdaptiveElectionTimeout({ baseElectionTick: 10, recalculationIntervalMs: 100 });
+    aet.start();
+    // No RTT samples → recalculate hits the `avgRtt <= 0` early return.
+    vi.advanceTimersByTime(500);
+    expect(aet.getRecommendedTick()).toBe(10); // unchanged
+    aet.stop();
+  });
+
+  it('AC 35.12: recalculate falls back to default multiplier when config is undefined', () => {
+    const onChange = vi.fn();
+    const aet = new AdaptiveElectionTimeout(
+      {
+        baseElectionTick: 10,
+        tickIntervalMs: 10,
+        rttMultiplier: undefined, // force the `?? 2` nullish fallback to kick in
+        minTick: 1,
+        maxTick: 100,
+        recalculationIntervalMs: 100,
+      },
+      onChange,
+    );
+    aet.recordRtt(100); // rttInTicks = 10 → recommended = 10 * 2 (default) = 20
+    aet.start();
+    vi.advanceTimersByTime(200);
+    expect(onChange).toHaveBeenCalled();
+    expect(aet.getRecommendedTick()).toBe(20);
+    aet.stop();
+  });
+
+  it('AC 35.13: recalculate clamps to minTick when recommended is too low', () => {
+    const onChange = vi.fn();
+    const aet = new AdaptiveElectionTimeout(
+      {
+        baseElectionTick: 10,
+        tickIntervalMs: 100,
+        rttMultiplier: 1,
+        minTick: 5,
+        maxTick: 100,
+        recalculationIntervalMs: 100,
+      },
+      onChange,
+    );
+    aet.recordRtt(10); // rttInTicks = 0.1 → recommended ≈ 0 → clamp to minTick 5
+    aet.start();
+    vi.advanceTimersByTime(200);
+    expect(aet.getRecommendedTick()).toBe(5);
+    aet.stop();
+  });
+
+  it('AC 35.14: setConfig without rttSampleWindow leaves it untouched', () => {
+    const aet = new AdaptiveElectionTimeout({ rttSampleWindow: 7 });
+    // Omitting rttSampleWindow exercises the `!== undefined` guard's false branch.
+    aet.setConfig({ baseElectionTick: 9 });
+    expect(aet.getConfig().rttSampleWindow).toBe(7);
+  });
+
+  it('AC 35.16: setConfig with rttSampleWindow applies the >=2 clamp', () => {
+    const aet = new AdaptiveElectionTimeout({ rttSampleWindow: 7 });
+    aet.setConfig({ rttSampleWindow: 1 }); // clamped to min 2
+    expect(aet.getConfig().rttSampleWindow).toBe(2);
+    aet.setConfig({ rttSampleWindow: 10 });
+    expect(aet.getConfig().rttSampleWindow).toBe(10);
+  });
+
+  it('AC 35.15: recalculate falls back to default tickIntervalMs when undefined', () => {
+    const onChange = vi.fn();
+    const aet = new AdaptiveElectionTimeout(
+      {
+        baseElectionTick: 10,
+        tickIntervalMs: undefined, // force `tickIntervalMs ?? 10` nullish fallback
+        rttMultiplier: 2,
+        minTick: 1,
+        maxTick: 100,
+        recalculationIntervalMs: 100,
+      },
+      onChange,
+    );
+    aet.recordRtt(100); // rttInTicks = 100/10 = 10 → recommended = 20
+    aet.start();
+    vi.advanceTimersByTime(200);
+    expect(aet.getRecommendedTick()).toBe(20);
+    aet.stop();
+  });
 });
