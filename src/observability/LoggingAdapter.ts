@@ -26,10 +26,10 @@ function rootLogger(): PinoLogger {
   if (!_rootLogger) {
     _rootLogger = pino({
       level: process.env.LOG_LEVEL || 'info',
-      // Use structured JSON for production; pretty-print in development
-      transport: process.env.NODE_ENV === 'development'
-        ? { target: 'pino-pretty', options: { colorize: true } }
-        : undefined,
+      // Structured JSON in all environments. A previous development-only
+      // `pino-pretty` transport was removed because `pino-pretty` is not a
+      // declared dependency — any NODE_ENV=development startup crashed with
+      // "unable to determine transport target".
       serializers: pino.stdSerializers,
       formatters: {
         level(label) {
@@ -65,6 +65,9 @@ const traceContext = (() => {
       },
     };
   } catch {
+    /* c8 ignore start — `node:async_hooks` exists in every supported Node
+       runtime (>= 12); this fallback guards a pre-12 environment that the
+       test suite cannot exercise. */
     // Fallback: no trace correlation (Node < 12)
     return {
       getTraceId: () => undefined,
@@ -72,6 +75,7 @@ const traceContext = (() => {
       runWithAsync: <T>(_id: string, fn: () => Promise<T>) => fn(),
     };
   }
+  /* c8 ignore stop */
 })();
 
 // ── LoggingAdapter (ILogger-compatible) ─────────────────────

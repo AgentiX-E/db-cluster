@@ -54,6 +54,26 @@ describe('LoggingAdapter (OBS1, OBS5)', () => {
     expect(() => adapter.fatal(err, 'fatal with message')).not.toThrow();
   });
 
+  it('OBS1.3b: fatal supports context + Error + message three-arg form', () => {
+    const err = new Error('fatal context error');
+    expect(() => adapter.fatal({ code: 500 }, err, 'fatal with context')).not.toThrow();
+  });
+
+  it('OBS1.3c: fatal supports a plain context object and message', () => {
+    expect(() => adapter.fatal({ requestId: 'r1' }, 'fatal without error')).not.toThrow();
+  });
+
+  it('OBS1.3d: error supports a plain context object and message (no Error)', () => {
+    expect(() => adapter.error({ requestId: 'r2' }, 'error without error object')).not.toThrow();
+  });
+
+  it('OBS1.3e: error/fatal with context + Error but no message (undefined msg)', () => {
+    const err = new Error('no message');
+    // Two-arg form (context, Error) leaves arg3 undefined → `arg3 || ''` fallback.
+    expect(() => adapter.error({ code: 501 }, err)).not.toThrow();
+    expect(() => adapter.fatal({ code: 502 }, err)).not.toThrow();
+  });
+
   it('OBS5.1: child logger inherits component and adds bindings', () => {
     const child = adapter.child({ requestId: 'req-1' });
     expect(() => child.info('child msg')).not.toThrow();
