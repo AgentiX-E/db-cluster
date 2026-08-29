@@ -336,7 +336,6 @@ export class HAFailoverDetector {
     // PATH 2: LEADER EXISTS — progress-based stagnation detection
     // ──────────────────────────────────────────────────────────────
     const prevCommit = this.lastCommitIndex.get(shardId) ?? -1;
-    const prevCommitTime = this.lastCommitTime.get(shardId) ?? now;
 
     if (commitIndex > prevCommit) {
       // Commit index advanced — leader is making progress, healthy
