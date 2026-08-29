@@ -163,4 +163,73 @@ describe('HAClientManager — Unit', () => {
     expect(clientManager.getClientCountForShard('s1')).toBe(0);
     expect(clientManager.getAllClientIds()).toEqual([]);
   });
+
+  //
+  // onLeaderChange — notification branches
+  //
+  it('onLeaderChange is a no-op log when the shard has no clients', () => {
+    // Shard 's-unknown' has no registered clients.
+    expect(() =>
+      clientManager.onLeaderChange('s-unknown', 'leader-9', '10.0.0.9:5432'),
+    ).not.toThrow();
+  });
+
+  it('onLeaderChange notifies all clients on an active shard', () => {
+    clientManager.registerClient('c1', 's0');
+    clientManager.registerClient('c2', 's0');
+    clientManager.registerClient('c3', 's1');
+
+    // Should not throw and should iterate the affected shard's clients.
+    expect(() =>
+      clientManager.onLeaderChange('s0', 'leader-new', '10.1.1.1:5432'),
+    ).not.toThrow();
+
+    // State is unchanged by notification.
+    expect(clientManager.getClientCountForShard('s0')).toBe(2);
+    expect(clientManager.getTotalClientCount()).toBe(3);
+  });
+
+  it('onLeaderChange handles an empty shard set (size 0)', () => {
+    // Register then unregister the only client, leaving shard 's0' absent from
+    // the index; the early-return branch should be exercised.
+    clientManager.registerClient('c1', 's0');
+    clientManager.unregisterClient('c1');
+    expect(() =>
+      clientManager.onLeaderChange('s0', 'leader-x', '10.0.0.1:5432'),
+    ).not.toThrow();
+  });
+
+  //
+  // register/unregister — shard-index cleanup branches
+  //
+  it('registerClient re-register to a new shard removes the emptied old shard set', () => {
+    clientManager.registerClient('c1', 's0');
+    clientManager.registerClient('c2', 's0');
+    // Move c1 to s1 — s0 still has c2, so s0 is not removed.
+    clientManager.registerClient('c1', 's1');
+    expect(clientManager.getClientCountForShard('s0')).toBe(1);
+    expect(clientManager.getClientCountForShard('s1')).toBe(1);
+    // Move c2 to s1 — now s0 becomes empty and should be pruned.
+    clientManager.registerClient('c2', 's1');
+    expect(clientManager.getClientCountForShard('s0')).toBe(0);
+    expect(clientManager.getClientCountForShard('s1')).toBe(2);
+    // getClientStats should have no 's0' entry (pruned).
+    expect(clientManager.getClientStats()).not.toHaveProperty('s0');
+  });
+
+  it('unregisterClient prunes the shard index when the last client leaves', () => {
+    clientManager.registerClient('c1', 's0');
+    clientManager.registerClient('c2', 's1');
+    // Remove the only client of s1.
+    clientManager.unregisterClient('c2');
+    expect(clientManager.getClientCountForShard('s1')).toBe(0);
+    expect(clientManager.getClientStats()).not.toHaveProperty('s1');
+  });
+
+  it('registerClient re-register to the same shard keeps a single entry', () => {
+    clientManager.registerClient('c1', 's0');
+    clientManager.registerClient('c1', 's0'); // no-op re-register
+    expect(clientManager.getClientCountForShard('s0')).toBe(1);
+    expect(clientManager.getTotalClientCount()).toBe(1);
+  });
 });
