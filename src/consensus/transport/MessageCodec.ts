@@ -272,6 +272,9 @@ export class MessageCodec {
 
       // ── Stream handlers ───────────────────────────────────────────────
       const onData = (chunk: Buffer) => {
+        // c8 ignore next — abort removes this listener synchronously after setting
+        // the flag, so no data chunk can observe `aborted === true`.
+        /* c8 ignore next */
         if (aborted) return;
 
         let offset = 0;
