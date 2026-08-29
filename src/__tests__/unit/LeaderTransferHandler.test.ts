@@ -115,6 +115,52 @@ describe('LeaderTransferHandler', () => {
       expect(result.success).toBe(false);
       expect(simpleRaftNode.step).toHaveBeenCalledWith(expect.objectContaining({ msgType: 13, to: 2, from: 1 }));
     });
+
+    it('logs a non-fatal warning and continues when the no-op propose fails', async () => {
+      proposeFn = vi.fn().mockRejectedValue(new Error('no-op rejected'));
+      getLeaderFn = vi.fn().mockImplementation(async () => {
+        return 2; // new leader detected immediately
+      });
+
+      const result = await handler.transfer(mockRaftNode, 1, '2', proposeFn, getLeaderFn, isLeaderFn);
+
+      // No-op failure is non-fatal; transfer still succeeds.
+      expect(result.success).toBe(true);
+      expect(result.newLeader).toBe('2');
+      expect(mockRaftNode.transferLeadership).toHaveBeenCalledWith(2, 5000);
+    });
+
+    it('returns failure when both transferLeadership and stepDown throw', async () => {
+      mockRaftNode.transferLeadership = vi.fn().mockRejectedValue(new Error('transfer unsupported'));
+      mockRaftNode.stepDown = vi.fn().mockRejectedValue(new Error('stepDown unsupported'));
+
+      const result = await handler.transfer(mockRaftNode, 1, '2', proposeFn, getLeaderFn, isLeaderFn);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('Leadership transfer failed');
+      expect(mockRaftNode.stepDown).toHaveBeenCalled();
+    });
+
+    it('returns failure when stepDown succeeds but no new leader is elected', async () => {
+      mockRaftNode.transferLeadership = vi.fn().mockRejectedValue(new Error('transfer unsupported'));
+      mockRaftNode.stepDown = vi.fn().mockResolvedValue(undefined);
+      getLeaderFn = vi.fn().mockResolvedValue(1); // leader never changes
+
+      const result = await handler.transfer(mockRaftNode, 1, '2', proposeFn, getLeaderFn, isLeaderFn);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('Leadership transfer failed');
+      expect(mockRaftNode.stepDown).toHaveBeenCalled();
+    });
+
+    it('skips campaign fallback and returns failure when raftNode is null', async () => {
+      const result = await handler.transfer(null, 1, '2', proposeFn, getLeaderFn, isLeaderFn);
+
+      // No transferLeadership and no stepDown on a null node → sendTimeoutNow is
+      // a no-op, and the transfer times out waiting for a leader change.
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('Timed out');
+    });
   });
 
   describe('isTransferInProgress', () => {
