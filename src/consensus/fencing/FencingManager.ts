@@ -243,10 +243,15 @@ export class FencingManager {
       };
     }
 
-    // Check if fencing action is 'block_all' — even unfenced writes are blocked
+    // 'block_all' forbids every write on this node, even when the shard is
+    // still unfenced (e.g., during a decommissioning/shutdown transition).
+    // It is intentionally stricter than the default 'block_writes' action,
+    // which only rejects writes on shards that have actually been fenced.
     if (this.config.action === 'block_all') {
-      // Only block if we've fenced at least once (i.e., in shutdown transition)
-      return { allowed: true };
+      return {
+        allowed: false,
+        reason: `Writes are blocked by 'block_all' fencing action for shard ${sid}`,
+      };
     }
 
     return { allowed: true };

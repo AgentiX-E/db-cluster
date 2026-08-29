@@ -196,4 +196,27 @@ describe('EventBus', () => {
     await new Promise(r => setTimeout(r, 20));
     expect(processed).toBe(true);
   });
+
+  // ── Async handler exception isolation (swallowed inside setImmediate) ──
+
+  it('a synchronously-throwing async subscriber is swallowed inside setImmediate', async () => {
+    // `onAsync` marks the handler as async (deferred via setImmediate), but a
+    // synchronous throw inside the callback exercises the try/catch that
+    // swallows async-handler exceptions.
+    const crashAsync = vi.fn(() => { throw new Error('async-boom'); });
+    const normalHandler = vi.fn();
+
+    bus.onAsync('leader.elected', crashAsync);
+    bus.on('leader.elected', normalHandler);
+
+    expect(() => {
+      bus.emit({ type: 'leader.elected', timestamp: 0, nodeId: 1, term: 1, leaderId: 1 });
+    }).not.toThrow();
+
+    // Wait for the setImmediate-delayed async handler to run and throw.
+    await new Promise(r => setTimeout(r, 20));
+
+    expect(crashAsync).toHaveBeenCalledTimes(1);
+    expect(normalHandler).toHaveBeenCalledTimes(1);
+  });
 });

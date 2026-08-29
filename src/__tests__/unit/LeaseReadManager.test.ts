@@ -146,6 +146,20 @@ describe('LeaseReadManager', () => {
   });
 
   //
+  // AC LR.10: onQuorumHeartbeatAck defaults `now` to Date.now()
+  //
+  it('AC LR.10: onQuorumHeartbeatAck defaults now to Date.now()', () => {
+    manager = new LeaseReadManager(500);
+    // Omitting the `now` argument exercises the `now ?? Date.now()` fallback.
+    manager.onQuorumHeartbeatAck();
+    expect(manager.isLeaseValid()).toBe(true);
+
+    // Advance past the lease to confirm the fallback timestamp was real.
+    vi.advanceTimersByTime(501);
+    expect(manager.isLeaseValid()).toBe(false);
+  });
+
+  //
   // AC LR.9: 95% reads within lease don't trigger quorum
   //
   it('AC LR.9: 95% requests within lease are served without quorum', () => {
