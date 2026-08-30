@@ -184,6 +184,19 @@ describe('PeerConnection lifecycle', () => {
     expect(conn.socket).toBeNull();
   });
 
+  it('close survives an error from socket.end/destroy (ignores close errors)', () => {
+    const socket = makeMockSocket();
+    socket.end = vi.fn(() => {
+      throw new Error('end-fail');
+    });
+    socket.destroy = vi.fn(() => {
+      throw new Error('destroy-fail');
+    });
+    const conn = new PeerConnection(2, socket);
+    expect(() => conn.close()).not.toThrow();
+    expect(conn.destroyed).toBe(true);
+  });
+
   it('emits data on non-empty socket data and updates lastRx', () => {
     const socket = makeMockSocket();
     const conn = new PeerConnection(2, socket);
@@ -554,6 +567,12 @@ describe('ConnectionPool onIncoming', () => {
     await expect(pool.onIncoming(2, socket)).resolves.toBeNull();
   });
 
+  it('rejects a certificate whose subject has no CN (falsy CN → empty string)', async () => {
+    const pool = new ConnectionPool(makeConfig());
+    const socket = makeMockSocket({ subject: {}, subjectaltname: 'DNS:raft-node-2' });
+    await expect(pool.onIncoming(2, socket)).resolves.toBeNull();
+  });
+
   it('rejects a not-yet-valid certificate (valid_from in the future)', async () => {
     const pool = new ConnectionPool(makeConfig());
     const socket = makeMockSocket({
@@ -648,6 +667,35 @@ describe('ConnectionPool onIncoming', () => {
 
     const conn = await pool.onIncoming(2, createMockSocket());
     expect(closeSpy).toHaveBeenCalled();
+    expect((pool as any)._connections.get(2)).toBe(conn);
+  });
+
+  it('close event triggers _onDisconnect when the connection is still active', async () => {
+    const pool = new ConnectionPool(makeConfig());
+    const conn = await pool.onIncoming(2, createMockSocket());
+    expect((pool as any)._connections.get(2)).toBe(conn);
+    const disconnectSpy = vi.spyOn(pool as any, '_onDisconnect').mockResolvedValue(undefined);
+    conn!.emit('close');
+    expect(disconnectSpy).toHaveBeenCalled();
+    disconnectSpy.mockRestore();
+  });
+
+  it('idle-timeout event triggers _onDisconnect when the connection is still active', async () => {
+    const pool = new ConnectionPool(makeConfig());
+    const conn = await pool.onIncoming(2, createMockSocket());
+    expect((pool as any)._connections.get(2)).toBe(conn);
+    const disconnectSpy = vi.spyOn(pool as any, '_onDisconnect').mockResolvedValue(undefined);
+    conn!.emit('idle-timeout');
+    expect(disconnectSpy).toHaveBeenCalled();
+    disconnectSpy.mockRestore();
+  });
+
+  it('logs an error when an incoming connection emits socket error', async () => {
+    const pool = new ConnectionPool(makeConfig());
+    const conn = await pool.onIncoming(2, createMockSocket());
+    // The error handler invokes the module-level pino logger; assert it does
+    // not throw and the connection remains registered.
+    expect(() => conn!.emit('error', new Error('incoming-broke'))).not.toThrow();
     expect((pool as any)._connections.get(2)).toBe(conn);
   });
 });
@@ -839,13 +887,25 @@ describe('ConnectionPool flushPending write failure', () => {
   it('re-queues a message when the write fails', async () => {
     const pool = new ConnectionPool(makeConfig());
     const conn = new PeerConnection(2, makeMockSocket());
-    (conn as any)._connected = false;
-    (conn as any)._socket = null; // force write to throw
+    // Keep the connection "connected" so flushPending reaches the write path,
+    // but force the underlying socket write to reject.
+    const socket = makeMockSocket();
+    socket.write = vi.fn((_data: Buffer, cb?: (e?: Error | null) => void) => {
+      // Invoke the callback with an error so PeerConnection.write rejects.
+      if (cb) setImmediate(() => cb(new Error('write-dropped')));
+      return true;
+    });
+    (conn as any)._socket = socket;
+    (conn as any)._connected = true;
     (pool as any)._connections.set(2, conn);
     const frame = encodeFrame(Buffer.from('pending-msg'));
     (pool as any)._pending.set(2, [{ msg: frame, resolved: false }]);
 
     await pool.flushPending(2);
+    // The write rejection re-enqueues asynchronously (fire-and-forget): wait
+    // for the rejection handler to run before asserting.
+    await new Promise((r) => setImmediate(r));
+    await new Promise((r) => setImmediate(r));
     expect((pool as any)._pending.get(2)).not.toHaveLength(0);
   });
 });
@@ -1026,6 +1086,46 @@ describe('ConnectionPool _waitForConnection', () => {
     vi.spyOn(pool as any, '_connect').mockRejectedValue(new Error('connect-failed'));
     await expect((pool as any)._waitForConnection(2)).rejects.toThrow('connect-failed');
   });
+
+  it('resolves from the second-check when a connection appears between checks', async () => {
+    const pool = new ConnectionPool(makeConfig());
+    // Simulate a race: the first mutex read sees no connection, but a
+    // connection becomes available for the second (lastConn) read.
+    const conn = new PeerConnection(2, makeMockSocket());
+    let reads = 0;
+    vi.spyOn((pool as any)._connMutex, 'runExclusive').mockImplementation(async (fn: any) => {
+      reads++;
+      // First read: no connection yet. Second read: the connection is ready.
+      return reads === 1 ? undefined : conn;
+    });
+    // Ensure _connecting does NOT contain the peer so we reach the second check.
+    (pool as any)._connecting.delete(2);
+    await expect((pool as any)._waitForConnection(2)).resolves.toBe(conn);
+  });
+
+  it('polls (setTimeout) while a connection attempt is in progress', async () => {
+    vi.useFakeTimers();
+    try {
+      const pool = new ConnectionPool(makeConfig());
+      const conn = new PeerConnection(2, makeMockSocket());
+      // A connection attempt is registered as in-progress.
+      (pool as any)._connecting.add(2);
+
+      const p = (pool as any)._waitForConnection(2);
+      // Before the 50ms poll elapses, mark the connection as available and
+      // clear the in-progress flag so the next check resolves.
+      await vi.advanceTimersByTimeAsync(0);
+      await (pool as any)._connMutex.runExclusive(async () => {
+        (pool as any)._connections.set(2, conn);
+      });
+      (pool as any)._connecting.delete(2);
+
+      await vi.advanceTimersByTimeAsync(50);
+      await expect(p).resolves.toBe(conn);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
 
 describe('ConnectionPool checkServerIdentity (TLS identity verification)', () => {
@@ -1136,6 +1236,44 @@ describe('ConnectionPool checkServerIdentity (TLS identity verification)', () =>
   it('rejects a cert whose SAN entry is not a DNS name', async () => {
     const id = await captureIdentity();
     expect(id('peer-2.local', cert({ subjectaltname: 'URI:spiffe://x' }))).toBeInstanceOf(Error);
+  });
+});
+
+describe('ConnectionPool _createTLSSocket authorization failure', () => {
+  it('rejects when the TLS socket reports unauthorized', async () => {
+    const pool = new ConnectionPool(
+      makeConfig({ peers: [{ id: 2, host: 'peer-2.local', port: 5002 }] }),
+    );
+    // Override tls.connect behavior so the connect callback sees
+    // socket.authorized === false.
+    tlsConnectBehavior = (opts, cb) => {
+      const socket = createMockSocket();
+      socket.authorized = false;
+      socket.authorizationError = 'bad signature';
+      tlsConnectMock(opts, cb);
+      capturedTlsOptions = opts;
+      setImmediate(() => cb());
+      return socket;
+    };
+    const peer = (pool as any)._peerInfo.get(2);
+    await expect((pool as any)._createTLSSocket(peer)).rejects.toThrow(/TLS authorization failed: bad signature/);
+  });
+
+  it('defaults the authorization error message to unknown when absent', async () => {
+    const pool = new ConnectionPool(
+      makeConfig({ peers: [{ id: 2, host: 'peer-2.local', port: 5002 }] }),
+    );
+    tlsConnectBehavior = (opts, cb) => {
+      const socket = createMockSocket();
+      socket.authorized = false;
+      socket.authorizationError = null;
+      tlsConnectMock(opts, cb);
+      capturedTlsOptions = opts;
+      setImmediate(() => cb());
+      return socket;
+    };
+    const peer = (pool as any)._peerInfo.get(2);
+    await expect((pool as any)._createTLSSocket(peer)).rejects.toThrow(/TLS authorization failed: unknown/);
   });
 });
 
