@@ -131,3 +131,25 @@ describe('RaftAdapter.stopHeartbeat', () => {
     await expect(adapter.stopHeartbeat()).rejects.toThrow('RaftAdapter not initialized');
   });
 });
+
+describe('RaftAdapter.transferLeadership — NOOP failure', () => {
+  it('should throw when the NOOP entry fails to commit', async () => {
+    const adapter = createAdapterWithMockNode({
+      isLeader: true,
+      submitCommandSuccess: false,
+      submitCommandError: 'rejected',
+    });
+
+    await expect(adapter.transferLeadership('2')).rejects.toThrow(/Failed to commit NOOP entry/);
+  });
+
+  it('should throw with an unknown reason when NOOP fails without an error', async () => {
+    const adapter = createAdapterWithMockNode({
+      isLeader: true,
+      submitCommandSuccess: false,
+      submitCommandError: '', // falsy → 'unknown' fallback in the throw message
+    });
+
+    await expect(adapter.transferLeadership('2')).rejects.toThrow(/Failed to commit NOOP entry: unknown/);
+  });
+});

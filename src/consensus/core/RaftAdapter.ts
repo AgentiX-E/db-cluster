@@ -758,7 +758,10 @@ export class RaftAdapter {
    * Check if a snapshot should be taken based on committed count.
    */
   shouldTakeSnapshot(): boolean {
-    const interval = this.config.snapshotInterval || 100;
+    // Use `??` so that an explicit `snapshotInterval: 0` (which disables
+    // snapshotting per the config contract) is preserved rather than being
+    // silently replaced by the default of 100 via `||`.
+    const interval = this.config.snapshotInterval ?? 100;
     if (interval <= 0) return false;
     return this.committedCount > 0 && this.committedCount % interval === 0;
   }
