@@ -251,6 +251,12 @@ describe('RaftAdapter — getter try/catch isolation', () => {
     await expect(adapter.getLeader()).resolves.toBeNull();
   });
 
+  // AC 34.30b: getLeader converts a non-null leader id string to a number.
+  it('getLeader returns the numeric leader id when node reports a leader', async () => {
+    const adapter = adapterWithNode(fakeNode({ getLeaderId: () => '42' }));
+    await expect(adapter.getLeader()).resolves.toBe(42);
+  });
+
   // AC 34.23b: propose success without index → index falls back to '0'.
   it('propose falls back to index 0 when submitCommand omits index', async () => {
     const adapter = adapterWithNode(
