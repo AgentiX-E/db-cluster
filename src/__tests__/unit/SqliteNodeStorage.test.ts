@@ -468,3 +468,174 @@ describe('SqliteNodeStorage (aggregate)', () => {
     expect(configData!.voters).toHaveLength(2);
   });
 });
+
+describe('SqliteNodeStorage — delegated open/close + defensive branches', () => {
+  let sqlite: SqliteStorage;
+  let dbPath: string;
+
+  beforeEach(() => {
+    dbPath = tempDbPath(`deleg-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+    sqlite = new SqliteStorage({ file: dbPath, maxLogSize: 0 });
+    sqlite.open();
+  });
+
+  afterEach(() => {
+    sqlite.close();
+    try {
+      fs.rmSync(path.dirname(dbPath), { recursive: true, force: true });
+    } catch {
+      /* ignore */
+    }
+  });
+
+  it('invokes each sub-storage open/close (no-op delegates)', async () => {
+    const meta = new SqliteMetaStorage(sqlite);
+    const log = new SqliteLogStorage(sqlite);
+    const snap = new SqliteSnapshotStorage(sqlite);
+    const config = new SqliteConfigStorage(sqlite);
+    const node = new SqliteNodeStorage(sqlite);
+
+    await meta.open();
+    await meta.close();
+    await log.open();
+    await log.close();
+    await snap.open();
+    await snap.close();
+    await config.open();
+    await config.close();
+    await node.open();
+    await node.close();
+
+    // isOpen reflects the underlying SqliteStorage db handle.
+    expect(meta.isOpen()).toBe(true);
+    expect(log.isOpen()).toBe(true);
+    expect(snap.isOpen()).toBe(true);
+    expect(config.isOpen()).toBe(true);
+    expect(node.isOpen()).toBe(true);
+  });
+
+  it('meta.read returns null when term is not a number', async () => {
+    const meta = new SqliteMetaStorage(sqlite);
+    await meta.write(1, 'node-1');
+    // Corrupt the term to a non-numeric string.
+    sqlite.setKv('node_term', Buffer.from('not-a-number'));
+    expect(await meta.read()).toBeNull();
+  });
+
+  it('meta.read treats empty votedFor as null', async () => {
+    const meta = new SqliteMetaStorage(sqlite);
+    await meta.write(3, null);
+    const r = await meta.read();
+    expect(r!.term).toBe(3);
+    expect(r!.votedFor).toBeNull();
+  });
+
+  it('log.append is a no-op for an empty array', async () => {
+    const log = new SqliteLogStorage(sqlite);
+    await log.append([]);
+    expect((await log.readMeta()).lastIndex).toBe(0);
+  });
+
+  it('log.getEntry falls back to raw utf-8 payload on invalid JSON', async () => {
+    const log = new SqliteLogStorage(sqlite);
+    // Insert a COMMAND row whose data is not valid JSON.
+    sqlite.appendLogEntry(1, 1, 0, Buffer.from('corrupt-json'));
+    const entry = await log.getEntry(1);
+    expect(entry).not.toBeNull();
+    expect(entry!.command!.type).toBe('command');
+    expect(entry!.command!.payload).toBe('corrupt-json');
+  });
+
+  it('snapshot.load returns null when snapshot index is absent', async () => {
+    const snap = new SqliteSnapshotStorage(sqlite);
+    expect(await snap.load()).toBeNull();
+  });
+
+  it('snapshot.load returns null when snapshot index is non-positive', async () => {
+    const snap = new SqliteSnapshotStorage(sqlite);
+    sqlite.setKv('snapshot_index', Buffer.from('0'));
+    expect(await snap.load()).toBeNull();
+  });
+
+  it('snapshot.load defaults data to an empty buffer when absent', async () => {
+    const snap = new SqliteSnapshotStorage(sqlite);
+    sqlite.setKv('snapshot_index', Buffer.from('5'));
+    // No snap term, no data, no config → fall back to defaults.
+    const s = await snap.load();
+    expect(s).not.toBeNull();
+    expect(s!.lastIncludedIndex).toBe(5);
+    expect(s!.lastIncludedTerm).toBe(0);
+    expect(s!.data.length).toBe(0);
+  });
+
+  it('snapshot.load uses an empty config when config JSON is corrupt', async () => {
+    const snap = new SqliteSnapshotStorage(sqlite);
+    sqlite.setKv('snapshot_index', Buffer.from('3'));
+    sqlite.setKv('snapshot_config', Buffer.from('not-json'));
+    const s = await snap.load();
+    expect(s!.config).toEqual({ voters: [], learners: [] });
+  });
+
+  it('config.read returns null when voters buffer is absent', async () => {
+    const config = new SqliteConfigStorage(sqlite);
+    expect(await config.read()).toBeNull();
+  });
+
+  it('config.read falls back to empty voters/learners on corrupt JSON', async () => {
+    const config = new SqliteConfigStorage(sqlite);
+    sqlite.setKv('config_voters', Buffer.from('corrupt'));
+    sqlite.setKv('config_learners', Buffer.from('also-corrupt'));
+    const r = await config.read();
+    expect(r).not.toBeNull();
+    expect(r!.voters).toEqual([]);
+    expect(r!.learners).toEqual([]);
+  });
+});
+
+describe('SqliteNodeStorage — nullish/fallback branches', () => {
+  let sqlite: SqliteStorage;
+  let dbPath: string;
+
+  beforeEach(() => {
+    dbPath = tempDbPath(`nullish-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+    sqlite = new SqliteStorage({ file: dbPath, maxLogSize: 0 });
+    sqlite.open();
+  });
+
+  afterEach(() => {
+    sqlite.close();
+    try {
+      fs.rmSync(path.dirname(dbPath), { recursive: true, force: true });
+    } catch {
+      /* ignore */
+    }
+  });
+
+  it('snapshot.readMetadata defaults lastIncludedTerm to 0 when term absent', async () => {
+    const snap = new SqliteSnapshotStorage(sqlite);
+    sqlite.setKv('snapshot_index', Buffer.from('7'));
+    // No snapshot_term → lastIncludedTerm falls back to 0.
+    const meta = await snap.readMetadata();
+    expect(meta).not.toBeNull();
+    expect(meta!.lastIncludedIndex).toBe(7);
+    expect(meta!.lastIncludedTerm).toBe(0);
+  });
+
+  it('log.getEntry falls back to "command" when parsed type is absent', async () => {
+    const log = new SqliteLogStorage(sqlite);
+    // COMMAND row with valid JSON lacking a "type" field.
+    const json = JSON.stringify({ payload: 'x' });
+    sqlite.appendLogEntry(1, 1, 0, Buffer.from(json));
+    const entry = await log.getEntry(1);
+    expect(entry!.command!.type).toBe('command');
+  });
+
+  it('log.getEntry falls back to the whole object when payload is absent', async () => {
+    const log = new SqliteLogStorage(sqlite);
+    const json = JSON.stringify({ type: 'set' });
+    sqlite.appendLogEntry(1, 1, 0, Buffer.from(json));
+    const entry = await log.getEntry(1);
+    // payload is missing → `parsed.payload ?? parsed` returns the full object.
+    expect(entry!.command!.payload).toEqual({ type: 'set' });
+  });
+});
