@@ -126,10 +126,6 @@ class WriteLock {
   private _locked = false;
   private _queue: Array<() => void> = [];
 
-  get locked(): boolean {
-    return this._locked;
-  }
-
   async acquire(): Promise<void> {
     if (!this._locked) {
       this._locked = true;
