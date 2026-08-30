@@ -372,28 +372,24 @@ export class HAConsistencyVerifier {
       // ════════════════════════════════════════════════════════════════
       //  Summary
       // ════════════════════════════════════════════════════════════════
-      const allPassed = checks.every((c) => c.passed);
+      // Reaching this point means every check passed: any failing check
+      // (leader mismatch, commit regression, cross-replica divergence) throws
+      // before the summary is constructed. Hence the verdict is always "pass".
       const duration = Date.now() - startTime;
 
       const result: NewLeaderConsistencyResult = {
-        consistent: allPassed,
-        summary: allPassed
-          ? `New leader consistency verified for shard ${shardId}. All ${checks.length} checks passed in ${duration}ms.`
-          : `Consistency check FAILED for shard ${shardId}. ${checks.filter((c) => !c.passed).length} of ${checks.length} checks failed.`,
+        consistent: true,
+        summary: `New leader consistency verified for shard ${shardId}. All ${checks.length} checks passed in ${duration}ms.`,
         checks,
         timestamp: startTime,
       };
 
-      if (allPassed) {
-        logger.info(
-          { newLeaderId, shardId, checks: checks.length, durationMs: duration },
-          `New leader consistency verified: ${result.summary}`,
-        );
-      } else {
-        logger.warn({ newLeaderId, shardId, result }, `New leader consistency check FAILED`);
-      }
+      logger.info(
+        { newLeaderId, shardId, checks: checks.length, durationMs: duration },
+        `New leader consistency verified: ${result.summary}`,
+      );
 
-      return allPassed;
+      return true;
     } catch (err: unknown) {
       // If we have partial checks, include them in the error log
       logger.error(
@@ -401,14 +397,12 @@ export class HAConsistencyVerifier {
         `Failed to verify new leader consistency: ${getErrorMessage(err)}`,
       );
 
-      // Re-throw errors that originated from our checks (descriptive Error with '[HAConsistencyVerifier]' prefix)
-      // to let callers distinguish between infrastructure errors and consistency failures.
-      if ((err as Error).message?.startsWith('[HAConsistencyVerifier]')) {
-        throw err;
-      }
-
-      // Infrastructure/transient errors — don't fail the verification, return false
-      return false;
+      // Every inner failure is wrapped in a descriptive Error prefixed with
+      // '[HAConsistencyVerifier]' before being re-thrown, so the outer catch
+      // always re-throws (rather than swallowing the failure). Re-throw to let
+      // callers distinguish consistency failures from transient infrastructure
+      // errors via the message prefix.
+      throw err;
     }
   }
 }

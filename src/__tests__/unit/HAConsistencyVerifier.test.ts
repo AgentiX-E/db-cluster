@@ -259,4 +259,113 @@ describe('HAConsistencyVerifier — Unit', () => {
     const result = await verifier.verifyNewLeaderConsistency('node-1', 's0');
     expect(result).toBe(true);
   });
+
+  //
+  // Additional coverage: defensive / error / nullish branches
+  //
+
+  it('verifyConsistency — getHealthStatus throwing falls back to empty list', async () => {
+    const consensus = createMockConsensusLayer({
+      getHealthStatus: () => {
+        throw new Error('health unavailable');
+      },
+    });
+    const verifier = new HAConsistencyVerifier();
+    const result = await verifier.verifyConsistency('s0', consensus);
+    expect(result.consistent).toBe(true);
+    expect(result.details).toContain('Only local node info');
+  });
+
+  it('verifyConsistency — single replica for shard reports consistent', async () => {
+    const consensus = createMockConsensusLayer({
+      getHealthStatus: () => [{ shardId: 's0', leaderId: 'node-1', commitIndex: 42, isLeader: true }],
+    });
+    const verifier = new HAConsistencyVerifier();
+    const result = await verifier.verifyConsistency('s0', consensus);
+    expect(result.consistent).toBe(true);
+  });
+
+  it('verifyConsistency — defaults missing health fields (nullish fallbacks)', async () => {
+    const consensus = createMockConsensusLayer({
+      getHealthStatus: () => [{ shardId: 's0' }, { shardId: 's0' }],
+    });
+    const verifier = new HAConsistencyVerifier();
+    const result = await verifier.verifyConsistency('s0', consensus);
+    expect(result.consistent).toBe(true);
+  });
+
+  it('verifyNewLeaderConsistency — getLeader throwing re-throws as consistency error', async () => {
+    const consensus = createMockConsensusLayer({
+      getLeader: () => {
+        throw new Error('rpc down');
+      },
+    });
+    const verifier = new HAConsistencyVerifier();
+    await expect(verifier.verifyNewLeaderConsistency('node-1', 's0', consensus)).rejects.toThrow(
+      /Cannot verify new leader consistency/,
+    );
+  });
+
+  it('verifyNewLeaderConsistency — getCommitIndex throwing re-throws as consistency error', async () => {
+    const consensus = createMockConsensusLayer({
+      getCommitIndex: () => {
+        throw new Error('storage read failure');
+      },
+    });
+    const verifier = new HAConsistencyVerifier();
+    await expect(verifier.verifyNewLeaderConsistency('node-1', 's0', consensus)).rejects.toThrow(
+      /Cannot query commit index/,
+    );
+  });
+
+  it('verifyNewLeaderConsistency — leader mismatch with null actual leader', async () => {
+    const consensus = createMockConsensusLayer({
+      getLeader: () => null,
+    });
+    const verifier = new HAConsistencyVerifier();
+    await expect(verifier.verifyNewLeaderConsistency('node-1', 's0', consensus)).rejects.toThrow(
+      /actual leader="null"/,
+    );
+  });
+
+  it('verifyNewLeaderConsistency — commitIndex 0 on fresh shard notes no entries', async () => {
+    const consensus = createMockConsensusLayer({
+      getCommitIndex: () => 0,
+      getHealthStatus: () => [],
+    });
+    const verifier = new HAConsistencyVerifier();
+    const result = await verifier.verifyNewLeaderConsistency('node-1', 's0', consensus);
+    expect(result).toBe(true);
+  });
+
+  it('verifyNewLeaderConsistency — cross-replica divergence throws', async () => {
+    const consensus = createMockConsensusLayer({
+      getHealthStatus: () => [
+        { shardId: 's0', nodeId: 'node-1', isLeader: true, commitIndex: 50, lastLogIndex: 50, term: 3 },
+        { shardId: 's0', nodeId: 'node-2', isLeader: false, commitIndex: 30, lastLogIndex: 30, term: 3 },
+      ],
+    });
+    const verifier = new HAConsistencyVerifier();
+    await expect(verifier.verifyNewLeaderConsistency('node-1', 's0', consensus)).rejects.toThrow(
+      /Cross-replica consistency check FAILED/,
+    );
+  });
+
+  it('verifyNewLeaderConsistency — no replicas for shard in health status', async () => {
+    const consensus = createMockConsensusLayer({
+      getHealthStatus: () => [{ shardId: 's1', nodeId: 'node-1', isLeader: true, commitIndex: 42, lastLogIndex: 42, term: 3 }],
+    });
+    const verifier = new HAConsistencyVerifier();
+    const result = await verifier.verifyNewLeaderConsistency('node-1', 's0', consensus);
+    expect(result).toBe(true);
+  });
+
+  it('verifyNewLeaderConsistency — cross-replica with missing fields uses defaults', async () => {
+    const consensus = createMockConsensusLayer({
+      getHealthStatus: () => [{ shardId: 's0' }, { shardId: 's0' }],
+    });
+    const verifier = new HAConsistencyVerifier();
+    const result = await verifier.verifyNewLeaderConsistency('node-1', 's0', consensus);
+    expect(result).toBe(true);
+  });
 });
