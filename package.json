@@ -52,7 +52,7 @@
     "buffer-crc32": "^1.0.0",
     "node-forge": "^1.4.0",
     "opossum": "^10.0.0",
-    "pino": "^9.0.0",
+    "pino": "^10.3.1",
     "tla-checker": "^0.6.10"
   },
   "devDependencies": {
