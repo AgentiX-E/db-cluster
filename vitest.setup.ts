@@ -4,24 +4,31 @@ process.env.VITEST = 'true';
 
 // Materialize a `pg` package stub under node_modules so the production
 // `require('pg')` (inside RaftGroupManager._execOnLeader auto-forward) resolves
-// in the test environment. `pg` is an optional runtime dependency not installed
-// here; this stub is created once per worker (setupFiles run per fork) and is
-// idempotent, so parallel test files never race on it. node_modules is
-// gitignored, so this is non-invasive.
-// The stub reads per-test behaviour from globalThis.__pgActions dynamically.
+// to a controllable fake in the test environment.
+//
+// `pg` IS declared as an optionalDependency, so it is physically installed.
+// However, the production code loads it via a CommonJS dynamic `require('pg')`,
+// which bypasses Vitest's ESM module graph — so `vi.mock('pg')` and
+// `resolve.alias` cannot intercept it. The only reliable way to stub a dynamic
+// require is to materialize a real module at the node_modules path.
+//
+// To keep unit tests deterministic (no real TCP/pg-protocol handshake), we
+// ALWAYS overwrite the installed `pg` with this stub (idempotent per worker:
+// setupFiles run once per fork). node_modules is gitignored, so this is
+// non-invasive. The stub reads per-test behaviour from `globalThis.__pgActions`
+// dynamically, so parallel test files never race on it.
 import * as fs from 'fs';
 import * as path from 'path';
 
 const pgStubDir = path.resolve(process.cwd(), 'node_modules/pg');
-if (!fs.existsSync(pgStubDir)) {
-  fs.mkdirSync(pgStubDir, { recursive: true });
-  fs.writeFileSync(
-    path.join(pgStubDir, 'package.json'),
-    JSON.stringify({ name: 'pg', version: '0.0.0-test-stub', main: 'index.js' }),
-  );
-  fs.writeFileSync(
-    path.join(pgStubDir, 'index.js'),
-    `
+fs.mkdirSync(pgStubDir, { recursive: true });
+fs.writeFileSync(
+  path.join(pgStubDir, 'package.json'),
+  JSON.stringify({ name: 'pg', version: '0.0.0-test-stub', main: 'index.js' }),
+);
+fs.writeFileSync(
+  path.join(pgStubDir, 'index.js'),
+  `
 class Client {
   constructor(cfg) {
     this.cfg = cfg;
@@ -35,5 +42,4 @@ class Client {
 }
 module.exports = { Client };
 `,
-  );
-}
+);
