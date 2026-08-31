@@ -21,3 +21,6 @@ memory/
 /raft-core-worker.ts
 coverage/
 *.tsbuildinfo
+
+# Test runtime artifacts (raft snapshots written during coverage runs)
+data/
