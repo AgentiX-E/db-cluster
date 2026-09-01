@@ -244,9 +244,13 @@ describe('RaftGroupManager — interface/health/topology/learner/transfer/pipeli
       g._leader = null;
       manager.autoForwardEnabled = false;
       vi.useFakeTimers();
+      // Attach the rejection assertion BEFORE advancing timers so the retry
+      // loop's eventual throw is already observed (avoids an unhandled
+      // rejection when the 50x10ms backoff resolves under fake timers).
       const p = manager.proposeAndWait(1, { sql: 'y' });
+      const assertion = expect(p).rejects.toThrow('not the Raft leader');
       await vi.advanceTimersByTimeAsync(600);
-      await expect(p).rejects.toThrow('not the Raft leader');
+      await assertion;
       vi.useRealTimers();
     });
   });
