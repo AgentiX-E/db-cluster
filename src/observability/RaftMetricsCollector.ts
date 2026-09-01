@@ -78,13 +78,13 @@ export class RaftMetricsCollector {
     for (let i = 0; i < LATENCY_BUCKETS.length; i++) {
       const bound = LATENCY_BUCKETS[i]!;
       if (ms <= bound) {
-        this._buckets[i] = (this._buckets[i] ?? 0) + 1;
+        this._buckets[i] = this._buckets[i]! + 1;
         break;
       }
     }
     // Overflow (above max bucket)
     const lastIdx = LATENCY_BUCKETS.length - 1;
-    if (ms > (LATENCY_BUCKETS[lastIdx] ?? LATENCY_BUCKETS[lastIdx - 1] ?? Infinity)) {
+    if (ms > LATENCY_BUCKETS[lastIdx]!) {
       (this._buckets[lastIdx] as number)++;
     }
 

@@ -202,4 +202,38 @@ describe('ConsistentHashStrategy — remaining branches', () => {
     expect(r.success).toBe(true);
     expect(new Set(r.data!['s0']!).size).toBe(2);
   });
+
+  it('buildRing with multiple nodes triggers the full sort comparator', () => {
+    const cs = new ConsistentHashStrategy(4);
+    cs.buildRing(['n1', 'n2', 'n3']);
+    // ring populated with 4 vnodes × 3 nodes = 12 vnodes, sorted by hash.
+    expect(cs.getRingSize()).toBe(12);
+  });
+
+  it('findNode returns null for an empty ring', () => {
+    const cs = new ConsistentHashStrategy(4);
+    expect((cs as any).findNode('key')).toBeNull();
+  });
+
+  it('findReplicas returns [] for an empty ring', () => {
+    const cs = new ConsistentHashStrategy(4);
+    expect((cs as any).findReplicas('key', 3)).toEqual([]);
+  });
+
+  it('findNode locates a node on a populated ring', () => {
+    const cs = new ConsistentHashStrategy(4);
+    cs.buildRing(['n1', 'n2']);
+    const node = (cs as any).findNode('some-key');
+    expect(['n1', 'n2']).toContain(node);
+  });
+
+  it('estimateRedistributionRatio returns 1.0 for empty oldNodes', () => {
+    const cs = new ConsistentHashStrategy(4);
+    expect(cs.estimateRedistributionRatio([], ['n1'])).toBe(1.0);
+  });
+
+  it('estimateRedistributionRatio returns a fraction for non-empty oldNodes', () => {
+    const cs = new ConsistentHashStrategy(4);
+    expect(cs.estimateRedistributionRatio(['n1', 'n2'], ['n1', 'n2', 'n3'])).toBeCloseTo(1 / 3);
+  });
 });

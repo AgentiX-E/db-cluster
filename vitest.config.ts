@@ -33,6 +33,14 @@ export default defineConfig({
         'src/interfaces/**',
         'src/consensus/interfaces/**',
         'src/types/**',
+        // Pure type-declaration files (zero runtime code) scattered outside
+        // the dedicated interfaces/ directories. Excluded so they do not
+        // drag the global coverage denominator to 0% — they have no
+        // executable statements to cover.
+        'src/consensus/joint-consensus/IClusterMembershipTransition.ts',
+        'src/observability/interfaces.ts',
+        'src/snapshot/ISnapshotManager.ts',
+        'src/stream/IWalStreamer.ts',
         // Debug / diagnostic files
         'src/__tests__/debug-*.ts',
         // Performance benchmarks (not unit-tested)
